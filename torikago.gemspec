@@ -13,9 +13,10 @@ Gem::Specification.new do |spec|
     module-scoped runtimes with Ruby::Box and routes host app and inter-module
     communication through explicit gateway and registry objects.
   DESCRIPTION
+  spec.homepage = "https://github.com/se4weed/torikago"
   spec.license = "MIT"
 
-  spec.required_ruby_version = ">= 3.4.0"
+  spec.required_ruby_version = ">= 4.0.3"
 
   spec.files = Dir[
     "README.ja.md",
