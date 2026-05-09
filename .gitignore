@@ -1,0 +1,9 @@
+/.bundle/
+/coverage/
+/pkg/
+/tmp/
+/vendor/bundle/
+/.yardoc
+/.byebug_history
+.DS_Store
+.local/

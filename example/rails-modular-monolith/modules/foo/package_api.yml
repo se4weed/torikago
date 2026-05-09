@@ -1,0 +1,12 @@
+exports:
+  Foo::DangerousAsciiArtQuery:
+    allowed_callers: []
+  Foo::GemVersionQuery:
+    allowed_callers: []
+  Foo::JwtCompatibilityQuery:
+    allowed_callers: []
+  Foo::ListProductsQuery:
+    allowed_callers:
+      - baz
+  Foo::LookupAddressQuery:
+    allowed_callers: []

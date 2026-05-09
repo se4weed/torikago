@@ -1,0 +1,10 @@
+<main style="padding: 2rem; font-family: monospace;">
+  <h1>/baz/foo-products</h1>
+  <p>The <code>baz</code> box can call <code>Foo::ListProductsQuery</code>.</p>
+
+  <ul>
+    <% @products.each do |product| %>
+      <li><strong><%= product.fetch("id") %></strong>: <%= product.fetch("name") %></li>
+    <% end %>
+  </ul>
+</main>

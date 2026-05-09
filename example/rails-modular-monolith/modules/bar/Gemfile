@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+gem "jwt", "= 3.1.2"
+gem "jpostcode", "= 1.0.0.20260507"

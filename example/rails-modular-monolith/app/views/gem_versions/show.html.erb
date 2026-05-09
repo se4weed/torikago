@@ -1,0 +1,113 @@
+<main>
+  <h1>Module Gem Versions</h1>
+
+  <p>
+    This page checks product-facing gems under two isolation cases: the main app and modules using different versions of the same authentication gem, and modules using different versions of a postcode lookup gem that the main app does not intentionally load.
+  </p>
+
+  <section>
+    <h2>Main vs module product gem</h2>
+    <p><code>jwt</code> is loaded in the main app and also required inside each module Box.</p>
+
+    <h3>main</h3>
+    <dl>
+      <dt>gem version</dt>
+      <dd><%= @main_result.fetch("version") %></dd>
+
+      <dt>product API used</dt>
+      <dd><code><%= @main_result.fetch("api") %></code></dd>
+
+      <dt>result</dt>
+      <dd><%= @main_result.fetch("result") %></dd>
+    </dl>
+
+    <h3>foo module</h3>
+    <% foo_main_vs_module = @foo_result.fetch("main_vs_module") %>
+    <dl>
+      <dt>gem version</dt>
+      <dd><%= foo_main_vs_module.fetch("version") %></dd>
+
+      <dt>product API used</dt>
+      <dd><code><%= foo_main_vs_module.fetch("api") %></code></dd>
+
+      <dt>result</dt>
+      <dd><%= foo_main_vs_module.fetch("result") %></dd>
+    </dl>
+
+    <h3>bar module</h3>
+    <% bar_main_vs_module = @bar_result.fetch("main_vs_module") %>
+    <dl>
+      <dt>gem version</dt>
+      <dd><%= bar_main_vs_module.fetch("version") %></dd>
+
+      <dt>product API used</dt>
+      <dd><code><%= bar_main_vs_module.fetch("api") %></code></dd>
+
+      <dt>result</dt>
+      <dd><%= bar_main_vs_module.fetch("result") %></dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Module-only product gem</h2>
+    <p><code>jpostcode</code> is not intentionally loaded in the main app for this page, but foo and bar require different versions inside their Boxes.</p>
+
+    <h3>main</h3>
+    <dl>
+      <dt>gem loaded?</dt>
+      <dd><%= @main_module_only_loaded ? "yes" : "no" %></dd>
+    </dl>
+
+    <h3>foo module</h3>
+    <% foo_module_only = @foo_result.fetch("module_only") %>
+    <dl>
+      <dt>gem version</dt>
+      <dd><%= foo_module_only.fetch("version") %></dd>
+
+      <dt>product API used</dt>
+      <dd><code><%= foo_module_only.fetch("api") %></code></dd>
+
+      <dt>result</dt>
+      <dd><%= foo_module_only.fetch("result") %></dd>
+    </dl>
+
+    <h3>bar module</h3>
+    <% bar_module_only = @bar_result.fetch("module_only") %>
+    <dl>
+      <dt>gem version</dt>
+      <dd><%= bar_module_only.fetch("version") %></dd>
+
+      <dt>product API used</dt>
+      <dd><code><%= bar_module_only.fetch("api") %></code></dd>
+
+      <dt>result</dt>
+      <dd><%= bar_module_only.fetch("result") %></dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Historical breaking changes</h2>
+    <p>
+      These are upgrade boundaries worth testing with Box-local gem paths. The installed demo versions are patch releases, but the page keeps the upgrade risk visible next to the runtime version check.
+    </p>
+
+    <% @breaking_changes.each do |change| %>
+      <article>
+        <h3><%= change.fetch("gem") %> <%= change.fetch("boundary") %></h3>
+        <dl>
+          <dt>change</dt>
+          <dd><%= change.fetch("change") %></dd>
+
+          <dt>module impact</dt>
+          <dd><%= change.fetch("impact") %></dd>
+        </dl>
+      </article>
+    <% end %>
+
+    <p>
+      Sources: <a href="https://rubygems.org/gems/jpostcode">jpostcode on RubyGems</a>,
+      <a href="https://www.rubydoc.info/gems/jpostcode/1.0.0.20250901">jpostcode README on RubyDoc</a>,
+      <a href="https://nokogiri.org/CHANGELOG.html">Nokogiri changelog</a>
+    </p>
+  </section>
+</main>

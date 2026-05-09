@@ -1,0 +1,14 @@
+#!/usr/bin/env ruby
+require "tmpdir"
+
+unless Dir.respond_to?(:tmpdir)
+  class << Dir
+    def tmpdir
+      ENV["TMPDIR"] || "/tmp"
+    end
+  end
+end
+
+APP_PATH = File.expand_path("../config/application", __dir__)
+require_relative "../config/boot"
+require "rails/commands"
