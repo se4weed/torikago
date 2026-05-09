@@ -19,6 +19,8 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 4.0.3"
 
   spec.files = Dir[
+    "LICENSE.txt",
+    "README.md",
     "README.ja.md",
     "lib/**/*.rb",
     "docs/**/*.md",
