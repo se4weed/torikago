@@ -1,36 +1,10 @@
 require_relative "../test_helper"
 require "fileutils"
+require "open3"
+require "rbconfig"
 require "tmpdir"
 
 class TorikagoEngineContainerTest < Minitest::Test
-  class FakeBox
-    attr_reader :load_path
-
-    def initialize
-      @load_path = []
-    end
-
-    def load(path)
-      original_load_path = $LOAD_PATH.dup
-      $LOAD_PATH.replace(load_path)
-      Kernel.load(path)
-    ensure
-      $LOAD_PATH.replace(original_load_path)
-    end
-
-    def const_defined?(name, inherit = true)
-      Object.const_defined?(name, inherit)
-    end
-
-    def const_set(name, value)
-      Object.const_set(name, value)
-    end
-
-    def const_get(name)
-      Object.const_get(name)
-    end
-  end
-
   def teardown
     Object.send(:remove_const, :Foo) if Object.const_defined?(:Foo, false)
     Object.send(:remove_const, :SharedDependency) if Object.const_defined?(:SharedDependency, false)
@@ -109,32 +83,89 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_activates_explicit_gemfile_overrides_before_loading_runtime
+  def test_call_prepends_explicit_gemfile_require_paths_before_loading_runtime
     with_module_root do |module_root|
-      activated_dependencies = []
+      dependency_lib = File.join(module_root, "vendor/example-gem-1.2.3/lib")
+      FileUtils.mkdir_p(dependency_lib)
+      File.write(
+        File.join(dependency_lib, "shared_dependency.rb"),
+        <<~RUBY
+          module SharedDependency
+            VERSION = "module-local"
+          end
+        RUBY
+      )
+      File.write(File.join(module_root, "Gemfile"), "")
+      File.write(
+        File.join(module_root, "app/package_api/foo/dependency_version_query.rb"),
+        <<~RUBY
+          require "shared_dependency"
 
-      container = Torikago::EngineContainer.new(
-        name: :foo,
-        module_root: module_root,
-        gemfile: "Gemfile",
-        gemfile_dependency_loader: lambda do |path|
-          assert_equal File.join(module_root, "Gemfile"), path.to_s
-          [{ name: "example-gem", requirement: "= 1.2.3" }]
-        end,
-        gem_activator: ->(dependency) { activated_dependencies << dependency }
+          class Foo::DependencyVersionQuery
+            def call
+              SharedDependency::VERSION
+            end
+          end
+        RUBY
       )
 
-      result = container.call("Foo::ListProductsQuery")
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          module_root = ARGV.fetch(1)
+          dependency_lib = ARGV.fetch(2)
 
-      assert_equal ["coffee-beans", "drip-bag"], result
-      assert_equal [{ name: "example-gem", requirement: "= 1.2.3" }], activated_dependencies
+          require "torikago"
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: module_root,
+            gemfile: "Gemfile",
+            gemfile_dependency_loader: lambda do |path|
+              raise "unexpected Gemfile path: \#{path}" unless path.to_s == File.join(module_root, "Gemfile")
+
+              [{ name: "example-gem", requirement: "= 1.2.3", require_paths: [dependency_lib] }]
+            end,
+            gem_activator: lambda do |_dependency|
+              raise "gem activator should not be called when Ruby::Box is active"
+            end
+          )
+
+          raise "unexpected result" unless container.call("Foo::DependencyVersionQuery") == "module-local"
+
+          puts "ok"
+        RUBY
+        module_root,
+        dependency_lib
+      )
     end
   end
 
-  def test_call_prepends_module_gem_require_paths_to_the_box_load_path_before_loading_runtime
+  def test_call_resolves_path_gem_require_paths_inside_ruby_box
     Dir.mktmpdir("torikago-engine-container") do |module_root|
       dependency_lib = File.join(module_root, "vendor/example-gem-1.0.0/lib")
       FileUtils.mkdir_p(dependency_lib)
+      File.write(
+        File.join(module_root, "Gemfile"),
+        <<~RUBY
+          source "https://rubygems.org"
+
+          gem "example-gem", path: "vendor/example-gem-1.0.0"
+        RUBY
+      )
+      File.write(
+        File.join(module_root, "vendor/example-gem-1.0.0/example-gem.gemspec"),
+        <<~RUBY
+          Gem::Specification.new do |spec|
+            spec.name = "example-gem"
+            spec.version = "1.0.0"
+            spec.summary = "test gem"
+            spec.authors = ["torikago"]
+            spec.files = ["lib/shared_dependency.rb"]
+            spec.require_paths = ["lib"]
+          end
+        RUBY
+      )
       File.write(
         File.join(dependency_lib, "shared_dependency.rb"),
         <<~RUBY
@@ -159,23 +190,25 @@ class TorikagoEngineContainerTest < Minitest::Test
         RUBY
       )
 
-      fake_box = FakeBox.new
-      activated_dependencies = []
-      container = Torikago::EngineContainer.new(
-        name: :foo,
-        module_root: module_root,
-        gemfile: "Gemfile",
-        box_factory: -> { fake_box },
-        gemfile_dependency_loader: lambda do |path|
-          assert_equal File.join(module_root, "Gemfile"), path.to_s
-          [{ name: "example-gem", requirement: "= 1.0.0", require_paths: [dependency_lib] }]
-        end,
-        gem_activator: ->(dependency) { activated_dependencies << dependency }
-      )
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          module_root = ARGV.fetch(1)
 
-      assert_equal "module-local", container.call("Foo::DependencyVersionQuery")
-      assert_equal dependency_lib, fake_box.load_path.first
-      assert_equal [], activated_dependencies
+          require "torikago"
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: module_root,
+            gemfile: "Gemfile"
+          )
+
+          raise "unexpected result" unless container.call("Foo::DependencyVersionQuery") == "module-local"
+
+          puts "ok"
+        RUBY
+        module_root
+      )
     end
   end
 
@@ -229,16 +262,25 @@ class TorikagoEngineContainerTest < Minitest::Test
         RUBY
       )
 
-      fake_box = FakeBox.new
-      container = Torikago::EngineContainer.new(
-        name: :foo,
-        module_root: module_root,
-        gemfile: "Gemfile",
-        box_factory: -> { fake_box }
-      )
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          module_root = ARGV.fetch(1)
 
-      assert_equal "1.0.0", container.call("Foo::GemfileDependencyQuery")
-      assert_equal dependency_lib, fake_box.load_path.first
+          require "torikago"
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: module_root,
+            gemfile: "Gemfile"
+          )
+
+          raise "unexpected result" unless container.call("Foo::GemfileDependencyQuery") == "1.0.0"
+
+          puts "ok"
+        RUBY
+        module_root
+      )
     end
   end
 
@@ -272,16 +314,21 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_wraps_gem_activation_failures_clearly
+  def test_call_reports_missing_installed_gemfile_dependencies_clearly
     with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "Gemfile"),
+        <<~RUBY
+          source "https://rubygems.org"
+
+          gem "example-gem", "= 9.9.9"
+        RUBY
+      )
+
       container = Torikago::EngineContainer.new(
         name: :foo,
         module_root: module_root,
-        gemfile: "Gemfile",
-        gemfile_dependency_loader: ->(_path) { [{ name: "example-gem", requirement: "= 9.9.9" }] },
-        gem_activator: lambda do |_dependency|
-          raise Gem::LoadError, "could not find gem"
-        end
+        gemfile: "Gemfile"
       )
 
       error = assert_raises(Torikago::GemfileOverrideError) do
@@ -470,7 +517,33 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def assert_ruby_box_child_process(script, *args)
+    stdout, stderr, status = Open3.capture3(
+      { "RUBY_BOX" => "1" },
+      RbConfig.ruby,
+      "-e",
+      script,
+      File.expand_path("../../lib", __dir__),
+      *args
+    )
+
+    assert_predicate status, :success?, stderr
+    assert_equal "ok\n", stdout
+  end
+
   def installed_gem?(name, requirement)
-    !Gem::Specification.find_all_by_name(name, requirement).empty?
+    return true unless installed_specs_for(name, requirement).empty?
+
+    gem_requirement = Gem::Requirement.new(requirement)
+    Gem::Specification.dirs.any? do |specification_dir|
+      Dir[File.join(specification_dir, "#{name}-*.gemspec")].any? do |gemspec_path|
+        spec = Gem::Specification.load(gemspec_path)
+        spec && spec.name == name && gem_requirement.satisfied_by?(spec.version)
+      end
+    end
+  end
+
+  def installed_specs_for(name, requirement)
+    Gem::Specification.find_all_by_name(name, requirement)
   end
 end
