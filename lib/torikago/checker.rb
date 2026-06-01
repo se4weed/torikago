@@ -66,7 +66,12 @@ module Torikago
       call_count = 0
       content.to_enum(:scan, CALL_PATTERN).each do
         call_count += 1
-        class_name = Regexp.last_match[:class_name]
+        match = Regexp.last_match
+        next unless match
+
+        class_name = match[:class_name]
+        next unless class_name
+
         # Public API names are expected to start with their owning module
         # namespace, e.g. Foo::ListProductsQuery targets the :foo box.
         target_box = infer_box_name(class_name)
