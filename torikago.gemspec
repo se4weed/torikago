@@ -23,6 +23,7 @@ Gem::Specification.new do |spec|
     "README.md",
     "README.ja.md",
     "lib/**/*.rb",
+    "sig/**/*.rbs",
     "docs/**/*.md",
     "test/**/*.rb"
   ]

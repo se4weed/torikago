@@ -1,0 +1,266 @@
+module Torikago
+  VERSION: String
+
+  def self.configuration: () -> Configuration
+  def self.configure: () { (Configuration) -> untyped } -> Configuration
+  def self.gateway: () -> Gateway
+  def self.registry: () -> Registry
+  def self.version: () -> String
+
+  def version: () -> String
+
+  def self.rails_app?: () -> bool
+  def self.ruby_box_enabled?: () -> bool
+  def self.warn_if_ruby_box_is_disabled_in_rails!: () -> nil
+  def self.reset_runtime_state!: () -> nil
+
+  class Configuration
+    class Definition
+      attr_accessor name: Symbol
+      attr_accessor root: Pathname
+      attr_accessor entrypoint: String?
+      attr_accessor setup: String?
+      attr_accessor gemfile: String?
+
+      def initialize: (?name: Symbol, ?root: Pathname, ?entrypoint: String?, ?setup: String?, ?gemfile: String?) -> void
+    end
+
+    def initialize: () -> void
+    def register: (Symbol | String name, root: Pathname | String, ?entrypoint: String?, ?setup: String?, ?gemfile: String?) -> Definition
+    def registered?: (Symbol | String name) -> bool
+    def each_definition: () -> untyped
+                       | () { (Definition) -> untyped } -> untyped
+    def fetch: (Symbol | String name) -> Definition
+  end
+
+  module CurrentExecution
+    STORAGE_KEY: Symbol
+
+    def current_box: () -> Symbol?
+    def with_box: [A] (Symbol | String box_name) { () -> A } -> A
+
+    def self.current_box: () -> Symbol?
+    def self.with_box: [A] (Symbol | String box_name) { () -> A } -> A
+  end
+
+  class Gateway
+    def self.call: (String public_api_class_name, *untyped, **untyped) -> untyped
+
+    def initialize: (registry: Registry, configuration: Configuration, ?manifest_loader: untyped) -> void
+    def call: (String public_api_class_name, *untyped, **untyped) -> untyped
+
+    private
+
+    attr_reader configuration: Configuration
+    attr_reader manifest_loader: untyped
+    attr_reader manifests: Hash[Symbol, Hash[String, untyped]]
+    attr_reader registry: Registry
+
+    def validate_public_api!: (Symbol target_module, String public_api_class_name, Symbol? caller_module) -> nil
+    def load_manifest: (Configuration::Definition definition) -> Hash[String, untyped]
+    def package_api_manifest_path: (Configuration::Definition definition) -> Pathname
+    def infer_target_module: (String public_api_class_name) -> Symbol
+    def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def dependency_allowed?: (untyped public_api_entry, Symbol caller_name) -> bool
+  end
+
+  class Registry
+    def initialize: (configuration: Configuration) ?{ (Configuration::Definition) -> EngineContainer } -> void
+    def resolve: (Symbol | String name) -> EngineContainer
+
+    private
+
+    def build_container: (Configuration::Definition definition) -> EngineContainer
+  end
+
+  class EngineContainer
+    def initialize: (
+      name: Symbol | String,
+      module_root: Pathname | String,
+      ?entrypoint: String?,
+      ?setup: String?,
+      ?gemfile: String?,
+      ?box_factory: untyped,
+      ?gemfile_dependency_loader: untyped,
+      ?gem_activator: untyped
+    ) -> void
+
+    def call: (String public_api_class_name, *untyped, **untyped) -> untyped
+
+    private
+
+    attr_reader box_factory: untyped
+    attr_reader entrypoint: String?
+    attr_reader gem_activator: untyped
+    attr_reader gemfile: String?
+    attr_reader gemfile_dependency_loader: untyped
+    attr_reader module_root: Pathname
+    attr_reader name: Symbol | String
+    attr_reader setup: String?
+
+    def boot_runtime!: () -> untyped
+    def load_setup_hook!: () -> untyped
+    def apply_gemfile_overrides!: () -> untyped
+    def prepend_gemfile_require_paths_to_box!: () -> untyped
+    def gemfile_dependencies: () -> Array[Hash[Symbol | String, untyped]]
+    def resolve_public_api_class: (String class_name) -> untyped
+    def runtime_files: () -> Array[String]
+    def public_api_root: () -> Pathname
+    def gemfile_path: () -> Pathname?
+    def setup_path: () -> Pathname?
+    def ensure_root_namespace!: () -> untyped
+    def ensure_root_namespace_in_box!: () -> untyped
+    def isolated_box_enabled?: () -> bool
+    def box: () -> untyped
+    def prepare_box!: () -> untyped
+    def gateway_model_files: () -> Array[String]
+    def rails_model_file?: (String path) -> bool
+    def load_setup_hook_into_box!: () -> untyped
+    def library_files: () -> Array[String]
+    def ruby_box_runtime_available?: () -> bool
+    def camelize: (String segment) -> String
+    def load_gemfile_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
+    def load_path_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
+    def load_installed_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
+    def installed_specs_for: (String gem_name, String requirement) -> Array[Gem::Specification]
+    def exact_version_gemfile_dependencies: (Pathname path) -> Array[Hash[Symbol, String]]
+    def activate_gem_dependency: (Hash[Symbol, untyped] dependency) -> untyped
+  end
+
+  class Checker
+    class Result
+      attr_accessor errors: Array[String]
+      attr_accessor scanned_file_count: Integer
+      attr_accessor gateway_call_count: Integer
+      attr_accessor manifest_count: Integer
+
+      def initialize: (?errors: Array[String], ?scanned_file_count: Integer, ?gateway_call_count: Integer, ?manifest_count: Integer) -> void
+      def ok?: () -> bool
+    end
+
+    CALL_PATTERN: Regexp
+
+    def initialize: (configuration: Configuration, source_roots: untyped) -> void
+    def call: () -> Result
+    def errors: () -> Array[String]
+
+    private
+
+    attr_reader configuration: Configuration
+    attr_reader manifests: Hash[Symbol, Hash[String, untyped]]
+    attr_reader source_roots: Array[Pathname]
+
+    def source_files: () -> Array[String]
+    def scan_gateway_calls: (String path, Array[String] errors) -> Integer
+    def validate_manifest_entries: (Configuration::Definition definition, Array[String] errors) -> untyped
+    def public_api_entry_for: (Symbol box_name, String class_name) -> untyped
+    def load_manifest: (Configuration::Definition definition) -> Hash[String, untyped]
+    def expected_public_api_path: (Configuration::Definition definition, String class_name) -> Pathname
+    def infer_box_name: (String class_name) -> Symbol
+    def infer_caller_box_from_path: (String path) -> Symbol?
+    def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def underscore: (String name) -> String
+    def public_api_root: (Configuration::Definition definition) -> Pathname
+  end
+
+  class PackageApiUpdater
+    def initialize: (configuration: Configuration) -> void
+    def call: (?Symbol | String | nil module_name) -> Hash[Symbol, Pathname]
+
+    private
+
+    attr_reader configuration: Configuration
+
+    def definitions_for: (Symbol | String? module_name) -> Array[Configuration::Definition]
+    def load_manifest: (Pathname path) -> Hash[String, untyped]
+    def build_manifest: (Configuration::Definition definition, Hash[String, untyped] existing_manifest) -> Hash[String, untyped]
+    def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def render_manifest: (Hash[String, untyped] manifest) -> String
+    def discover_public_api_classes: (Configuration::Definition definition) -> Array[String]
+    def public_api_root: (Configuration::Definition definition) -> Pathname
+    def class_name_from: (String relative_path) -> String
+    def camelize: (String segment) -> String
+  end
+
+  class CLI
+    HELP_TEXT: String
+
+    def initialize: (?stdin: untyped, ?stdout: untyped, ?stderr: untyped) -> void
+    def run: (Array[String] argv) -> Integer
+
+    private
+
+    attr_reader stderr: untyped
+    attr_reader stdin: untyped
+    attr_reader stdout: untyped
+
+    def run_init: () -> Integer
+    def run_check: () -> Integer
+    def run_update_package_api: (String? module_name) -> Integer
+    def discover_configuration: () -> Configuration
+    def ask: (String prompt, default: String) -> String
+           | (String prompt, ?default: String?) -> String?
+    def discover_module_directories: (Pathname modules_root) -> Array[Pathname]
+    def load_yaml_file: (Pathname path) -> Hash[String, untyped]
+    def render_initializer: (Configuration configuration) -> String
+    def render_package_api_manifest: (Hash[String, untyped] manifest) -> String
+    def yes?: (String? input) -> bool
+  end
+
+  class Error < StandardError
+  end
+
+  class DependencyError < Error
+  end
+
+  class BoxUnavailableError < Error
+  end
+
+  class PublicApiError < Error
+  end
+
+  class GemfileOverrideError < Error
+  end
+end
+
+module Ruby
+  class Box
+    def self.new: () -> Box
+    def load_path: () -> Array[String]
+    def require: (String feature) -> untyped
+    def load: (String path) -> untyped
+    def const_defined?: (String name, bool inherit) -> bool
+    def const_set: (String name, Module module_) -> Module
+    def const_get: (String name) -> untyped
+  end
+end
+
+module Rails
+  def self.respond_to?: (Symbol name) -> bool
+  def self.application: () -> untyped
+  def self.root: () -> Pathname
+end
+
+module Bundler
+  class BundlerError < StandardError
+  end
+
+  class Definition
+    def self.build: (String gemfile, String? lockfile, nil unlock) -> untyped
+  end
+end
+
+class Gem::Specification
+  def self.load: (String path) -> Gem::Specification?
+  def self.find_all_by_name: (String name, String requirement) -> Array[Gem::Specification]
+  def self.dirs: () -> Array[String]
+
+  def name: () -> String
+  def version: () -> Gem::Version
+  def require_paths: () -> Array[String]
+  def full_require_paths: () -> Array[String]
+end
+
+class Gem::Version
+  def to_s: () -> String
+end

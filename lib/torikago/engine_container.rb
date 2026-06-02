@@ -267,6 +267,9 @@ module Torikago
     def load_path_gem_dependencies(path)
       path.dirname.then do |gemfile_root|
         path.read.scan(/^\s*gem\s+["']([^"']+)["']\s*,\s*path:\s*["']([^"']+)["']/).filter_map do |gem_name, relative_path|
+          next unless relative_path
+
+          relative_path = relative_path.to_s
           gem_root = gemfile_root.join(relative_path)
           gemspec_path = gem_root.join("#{gem_name}.gemspec")
           gemspec_path = Dir[gem_root.join("*.gemspec").to_s].sort.first unless gemspec_path.exist?
