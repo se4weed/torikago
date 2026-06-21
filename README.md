@@ -78,6 +78,11 @@ cd example/rails-modular-monolith
 RUBY_BOX=1 bundle exec rails test
 ```
 
+### CI
+
+GitHub Actions runs on a self-hosted runner labeled `ruby-box`. The runner must
+provide a Ruby build where `Ruby::Box` is available.
+
 ### Start the example app
 
 ```sh

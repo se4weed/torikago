@@ -696,14 +696,16 @@ class TorikagoEngineContainerTest < Minitest::Test
   end
 
   def assert_ruby_box_child_process(script, *args)
-    stdout, stderr, status = Open3.capture3(
-      { "RUBY_BOX" => "1" },
-      RbConfig.ruby,
-      "-e",
-      script,
-      File.expand_path("../../lib", __dir__),
-      *args
-    )
+    stdout, stderr, status = Bundler.with_unbundled_env do
+      Open3.capture3(
+        { "RUBY_BOX" => "1" },
+        RbConfig.ruby,
+        "-e",
+        script,
+        File.expand_path("../../lib", __dir__),
+        *args
+      )
+    end
 
     assert_predicate status, :success?, stderr
     assert_equal "ok\n", stdout
