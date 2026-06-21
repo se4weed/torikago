@@ -1,0 +1,4 @@
+exports:
+  Baz::SafeBannerQuery:
+    allowed_callers:
+      - foo

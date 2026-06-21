@@ -1,0 +1,23 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    base64 (0.3.0)
+    jpostcode (1.0.0.20260507)
+    jwt (3.1.2)
+      base64
+
+PLATFORMS
+  arm64-darwin-25
+  ruby
+
+DEPENDENCIES
+  jpostcode (= 1.0.0.20260507)
+  jwt (= 3.1.2)
+
+CHECKSUMS
+  base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
+  jpostcode (1.0.0.20260507) sha256=3e1b0efda6a41d66bb8278e010c2b05494bacf0986329dda7a06d08b90712f3f
+  jwt (3.1.2) sha256=af6991f19a6bb4060d618d9add7a66f0eeb005ac0bc017cd01f63b42e122d535
+
+BUNDLED WITH
+  4.1.0.dev

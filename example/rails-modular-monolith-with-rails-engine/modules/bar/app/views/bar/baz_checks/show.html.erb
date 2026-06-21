@@ -1,0 +1,10 @@
+<main style="padding: 2rem; font-family: monospace;">
+  <h1>/bar/baz-check</h1>
+  <p>Calling <code>Baz::SafeBannerQuery</code> from the <code>bar</code> box is rejected by the dependency boundary.</p>
+
+  <% if @dependency_error %>
+    <pre style="padding: 1rem; background: #111; color: #fca5a5; border-radius: 12px;"><%= @dependency_error.message %></pre>
+  <% else %>
+    <pre style="padding: 1rem; background: #111; color: #fca5a5; border-radius: 12px;">unexpectedly allowed</pre>
+  <% end %>
+</main>
