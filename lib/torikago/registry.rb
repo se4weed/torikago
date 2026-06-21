@@ -26,6 +26,7 @@ module Torikago
         name: definition.name,
         module_root: definition.root,
         entrypoint: definition.entrypoint,
+        rails_engine: definition.rails_engine,
         setup: definition.setup,
         gemfile: definition.gemfile
       )

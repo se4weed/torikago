@@ -83,6 +83,74 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_call_loads_plain_lib_entrypoint_by_default
+    with_module_root do |module_root|
+      lib_dir = File.join(module_root, "lib")
+      FileUtils.mkdir_p(lib_dir)
+      File.write(
+        File.join(lib_dir, "foo.rb"),
+        <<~RUBY
+          module Foo
+            PLAIN_LIB_ENTRYPOINT = "loaded"
+          end
+        RUBY
+      )
+      File.write(
+        File.join(module_root, "app/package_api/foo/plain_lib_entrypoint_query.rb"),
+        <<~RUBY
+          class Foo::PlainLibEntrypointQuery
+            def call
+              Foo::PLAIN_LIB_ENTRYPOINT
+            end
+          end
+        RUBY
+      )
+
+      container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      assert_equal "loaded", container.call("Foo::PlainLibEntrypointQuery")
+    end
+  end
+
+  def test_call_skips_only_the_module_lib_entrypoint_when_rails_engine_is_enabled
+    with_module_root do |module_root|
+      lib_dir = File.join(module_root, "lib")
+      FileUtils.mkdir_p(File.join(lib_dir, "foo"))
+      File.write(
+        File.join(lib_dir, "foo.rb"),
+        <<~RUBY
+          raise "Rails::Engine entrypoint should be loaded by Rails, not EngineContainer"
+        RUBY
+      )
+      File.write(
+        File.join(lib_dir, "foo/support.rb"),
+        <<~RUBY
+          module Foo
+            SUPPORT_VALUE = "ordinary lib file loaded"
+          end
+        RUBY
+      )
+      File.write(
+        File.join(module_root, "app/package_api/foo/rails_engine_support_query.rb"),
+        <<~RUBY
+          class Foo::RailsEngineSupportQuery
+            def call
+              Foo::SUPPORT_VALUE
+            end
+          end
+        RUBY
+      )
+
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        rails_engine: true
+      )
+
+      assert_equal "ordinary lib file loaded", container.call("Foo::RailsEngineSupportQuery")
+    end
+  end
+
   def test_call_prepends_explicit_gemfile_require_paths_before_loading_runtime
     with_module_root do |module_root|
       dependency_lib = File.join(module_root, "vendor/example-gem-1.2.3/lib")

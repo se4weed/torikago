@@ -5,10 +5,11 @@ module Torikago
   # loads the module into an isolated Box; otherwise it falls back to the host
   # process for development and tests.
   class EngineContainer
-    def initialize(name:, module_root:, entrypoint: nil, setup: nil, gemfile: nil, box_factory: nil, gemfile_dependency_loader: nil, gem_activator: nil)
+    def initialize(name:, module_root:, entrypoint: nil, rails_engine: false, setup: nil, gemfile: nil, box_factory: nil, gemfile_dependency_loader: nil, gem_activator: nil)
       @name = name
       @module_root = Pathname(module_root)
       @entrypoint = entrypoint
+      @rails_engine = rails_engine
       @setup = setup
       @gemfile = gemfile
       @box_factory = box_factory
@@ -17,9 +18,12 @@ module Torikago
     end
 
     def call(public_api_class_name, *args, **kwargs)
-      CurrentExecution.with_box(name) do
-        public_api_class = resolve_public_api_class(public_api_class_name)
-        public_api_class.new.call(*args, **kwargs)
+      if isolated_box_enabled?
+        without_bundler_setup_env do
+          call_with_current_execution(public_api_class_name, *args, **kwargs)
+        end
+      else
+        call_with_current_execution(public_api_class_name, *args, **kwargs)
       end
     end
 
@@ -27,21 +31,30 @@ module Torikago
 
     attr_reader :box_factory, :entrypoint, :gem_activator, :gemfile, :gemfile_dependency_loader, :module_root, :name, :setup
 
+    def call_with_current_execution(public_api_class_name, *args, **kwargs)
+      CurrentExecution.with_box(name) do
+        public_api_class = resolve_public_api_class(public_api_class_name)
+        public_api_class.new.call(*args, **kwargs)
+      end
+    end
+
     def boot_runtime!
       return if @booted
 
       files = runtime_files
       gemfile_dependencies
       if isolated_box_enabled?
-        # The Box starts with an independent load path and constant table, so
-        # boot has to copy enough host context before loading module code.
-        prepare_box!
-        prepend_gemfile_require_paths_to_box!
-        load_setup_hook_into_box!
-        ensure_root_namespace_in_box!
+        without_bundler_setup_env do
+          # The Box starts with an independent load path and constant table, so
+          # boot has to copy enough host context before loading module code.
+          prepare_box!
+          prepend_gemfile_require_paths_to_box!
+          load_setup_hook_into_box!
+          ensure_root_namespace_in_box!
 
-        files.each do |path|
-          box.load(path)
+          files.each do |path|
+            box.load(path)
+          end
         end
       else
         # Non-Box mode preserves the same public behavior while giving up
@@ -161,7 +174,7 @@ module Torikago
       @box ||= if box_factory
                  box_factory.call
                else
-                 Ruby::Box.new
+                 without_bundler_setup_env { Ruby::Box.new }
                end
     end
 
@@ -202,10 +215,15 @@ module Torikago
     def library_files
       all_files = Dir[module_root.join("lib/**/*.rb").to_s].sort
       monkey_patch_files = Dir[module_root.join("lib/monkey_patches/**/*.rb").to_s]
+      rails_engine_entrypoint_files = rails_engine? ? [module_root.join("lib/#{name}.rb").to_s] : []
 
       # Monkey patches are only loaded through the explicit setup hook so a
       # module has to opt in to global-ish runtime changes.
-      all_files - monkey_patch_files
+      all_files - monkey_patch_files - rails_engine_entrypoint_files
+    end
+
+    def rails_engine?
+      @rails_engine
     end
 
     def ruby_box_runtime_available?
@@ -213,7 +231,7 @@ module Torikago
 
       @ruby_box_runtime_available = if ENV["RUBY_BOX"] == "1"
                                       begin
-                                        Ruby::Box.new
+                                        without_bundler_setup_env { Ruby::Box.new }
                                         true
                                       rescue RuntimeError
                                         false
@@ -338,6 +356,36 @@ module Torikago
 
     def activate_gem_dependency(dependency)
       Kernel.send(:gem, dependency.fetch(:name), dependency.fetch(:requirement))
+    end
+
+    def without_bundler_setup_env
+      rubyopt = ENV["RUBYOPT"]
+      bundler_setup = ENV["BUNDLER_SETUP"]
+
+      if rubyopt&.include?("bundler/setup")
+        options = rubyopt.split.reject { |option| option.include?("bundler/setup") }
+        if options.empty?
+          ENV.delete("RUBYOPT")
+        else
+          ENV["RUBYOPT"] = options.join(" ")
+        end
+      end
+
+      ENV.delete("BUNDLER_SETUP")
+
+      yield
+    ensure
+      if rubyopt
+        ENV["RUBYOPT"] = rubyopt
+      else
+        ENV.delete("RUBYOPT")
+      end
+
+      if bundler_setup
+        ENV["BUNDLER_SETUP"] = bundler_setup
+      else
+        ENV.delete("BUNDLER_SETUP")
+      end
     end
   end
 end

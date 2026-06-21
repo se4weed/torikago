@@ -178,6 +178,11 @@ module Torikago
         "#     Directory containing exported Package API classes. The conventional",
         "#     default is app/package_api.",
         "#",
+        "#   rails_engine:",
+        "#     Set true when the module owns a Rails::Engine entrypoint at",
+        "#     lib/<module_name>.rb. That entrypoint is then left for Rails and",
+        "#     skipped by the module Box runtime.",
+        "#",
         "#   gemfile:",
         "#     Optional module-local Gemfile. When Ruby::Box isolation is enabled,",
         "#     torikago prepends that module's resolved gem require paths inside the",
@@ -203,8 +208,16 @@ module Torikago
         lines << "  config.register("
         lines << "    :#{definition.name},"
         lines << "    root: Rails.root.join(\"#{definition.root.to_s}\"),"
-        lines << "    entrypoint: #{definition.entrypoint.inspect}#{definition.gemfile ? "," : ""}"
-        lines << "    gemfile: #{definition.gemfile.inspect}" if definition.gemfile
+        options = [
+          ["entrypoint", definition.entrypoint],
+          ["rails_engine", definition.rails_engine],
+          ["gemfile", definition.gemfile]
+        ].select { |_key, value| value }
+
+        options.each_with_index do |(key, value), index|
+          comma = index == options.length - 1 ? "" : ","
+          lines << "    #{key}: #{value.inspect}#{comma}"
+        end
         lines << "  )"
         lines << ""
       end
