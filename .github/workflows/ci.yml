@@ -37,13 +37,16 @@ jobs:
       - name: steep check
         run: bundle exec steep check
 
+      - name: Install rake
+        run: gem install rake --no-document
+
       - name: rake test
-        run: bundle exec rake test
+        run: rake test
 
       - name: rake test (RUBY_BOX=true)
-        run: bundle exec rake test
+        run: rake test
         env:
-          RUBY_BOX: "true"
+          RUBY_BOX: "1"
 
   rails-modular-monolith:
     name: rails-modular-monolith / Ruby ${{ matrix.ruby-label }}
