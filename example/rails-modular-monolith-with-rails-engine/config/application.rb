@@ -37,7 +37,7 @@ require_relative "../modules/foo/lib/foo"
 require_relative "../modules/bar/lib/bar"
 require_relative "../modules/baz/lib/baz"
 
-module RailsModularMonorith
+module RailsModularMonolith
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.1
