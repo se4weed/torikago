@@ -52,6 +52,12 @@ jobs:
           bundler-cache: true
           working-directory: example/rails-modular-monolith
 
+      - name: Install rails-modular-monolith module bundles
+        run: |
+          BUNDLE_GEMFILE=modules/foo/Gemfile bundle install
+          BUNDLE_GEMFILE=modules/bar/Gemfile bundle install
+        working-directory: example/rails-modular-monolith
+
       - name: rails-modular-monolith test
         run: bundle exec bin/box-rails test
         working-directory: example/rails-modular-monolith
@@ -64,6 +70,12 @@ jobs:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
           working-directory: example/rails-modular-monolith-with-rails-engine
+
+      - name: Install rails-modular-monolith-with-rails-engine module bundles
+        run: |
+          BUNDLE_GEMFILE=modules/foo/Gemfile bundle install
+          BUNDLE_GEMFILE=modules/bar/Gemfile bundle install
+        working-directory: example/rails-modular-monolith-with-rails-engine
 
       - name: rails-modular-monolith-with-rails-engine test
         run: bundle exec bin/box-rails test
