@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Ruby ${{ matrix.ruby-label }}
+  root:
+    name: Root / Ruby ${{ matrix.ruby-label }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Setup root bundle
+      - name: Setup bundle
         uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
@@ -45,39 +45,75 @@ jobs:
         env:
           RUBY_BOX: "true"
 
-      - name: Setup rails-modular-monolith bundle
+  rails-modular-monolith:
+    name: rails-modular-monolith / Ruby ${{ matrix.ruby-label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ruby-version: "4.0.5"
+            ruby-label: "4.0.5"
+          - ruby-version: ruby-head
+            ruby-label: "4.1-dev"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup bundle
         uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
           working-directory: example/rails-modular-monolith
 
-      - name: Install rails-modular-monolith module bundles
+      - name: Install module bundles
         run: |
-          BUNDLE_GEMFILE=modules/foo/Gemfile bundle install
-          BUNDLE_GEMFILE=modules/bar/Gemfile bundle install
+          BUNDLE_GEMFILE=modules/foo/Gemfile bundle install --system
+          BUNDLE_GEMFILE=modules/bar/Gemfile bundle install --system
         working-directory: example/rails-modular-monolith
 
-      - name: rails-modular-monolith test
+      - name: Test
         run: bundle exec bin/box-rails test
         working-directory: example/rails-modular-monolith
         env:
           RUBYLIB: ${{ github.workspace }}/lib
 
-      - name: Setup rails-modular-monolith-with-rails-engine bundle
+  rails-modular-monolith-with-rails-engine:
+    name: rails-modular-monolith-with-rails-engine / Ruby ${{ matrix.ruby-label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ruby-version: "4.0.5"
+            ruby-label: "4.0.5"
+          - ruby-version: ruby-head
+            ruby-label: "4.1-dev"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup bundle
         uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
           working-directory: example/rails-modular-monolith-with-rails-engine
 
-      - name: Install rails-modular-monolith-with-rails-engine module bundles
+      - name: Install module bundles
         run: |
-          BUNDLE_GEMFILE=modules/foo/Gemfile bundle install
-          BUNDLE_GEMFILE=modules/bar/Gemfile bundle install
+          BUNDLE_GEMFILE=modules/foo/Gemfile bundle install --system
+          BUNDLE_GEMFILE=modules/bar/Gemfile bundle install --system
         working-directory: example/rails-modular-monolith-with-rails-engine
 
-      - name: rails-modular-monolith-with-rails-engine test
+      - name: Test
         run: bundle exec bin/box-rails test
         working-directory: example/rails-modular-monolith-with-rails-engine
         env:
