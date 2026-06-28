@@ -97,12 +97,12 @@ module Torikago
 
       # Put module-specific gems ahead of the host load path so the Box resolves
       # dependency versions from the module Gemfile first.
-      box.load_path.replace(paths.map(&:to_s) + box.load_path)
+      box.load_path.replace(paths.map { |path| path.to_s } + box.load_path)
     end
 
     def gemfile_dependencies
       path = gemfile_path
-      return [] unless path
+      return Array.new unless path
 
       @gemfile_dependencies ||= gemfile_dependency_loader.call(path)
     end
@@ -211,7 +211,7 @@ module Torikago
     def library_files
       all_files = Dir[module_root.join("lib/**/*.rb").to_s].sort
       monkey_patch_files = Dir[module_root.join("lib/monkey_patches/**/*.rb").to_s]
-      rails_engine_entrypoint_files = rails_engine? ? [module_root.join("lib/#{name}.rb").to_s] : []
+      rails_engine_entrypoint_files = rails_engine? ? [module_root.join("lib/#{name}.rb").to_s] : Array.new
 
       # Monkey patches are only loaded through the explicit setup hook so a
       # module has to opt in to global-ish runtime changes.
@@ -286,7 +286,7 @@ module Torikago
       lockfile = Pathname("#{path}.lock")
       definition = Bundler::Definition.build(path.to_s, lockfile.exist? ? lockfile.to_s : nil, nil)
 
-      specs_by_name = definition.specs.each_with_object({}) do |spec, specs|
+      specs_by_name = definition.specs.each_with_object(Hash.new) do |spec, specs|
         specs[spec.name] ||= spec
       end
 
@@ -311,7 +311,7 @@ module Torikago
 
     def load_installed_gem_dependencies(path)
       dependencies = exact_version_gemfile_dependencies(path)
-      return [] if dependencies.empty?
+      return Array.new if dependencies.empty?
 
       dependencies.filter_map do |dependency|
         specs = installed_specs_for(dependency.fetch(:name), dependency.fetch(:requirement))
@@ -351,9 +351,13 @@ module Torikago
         match = line.match(/^\s*gem\s+["']([^"']+)["']\s*,\s*["']=\s*([^"']+)["']/)
         next unless match
 
+        gem_name = match[1]
+        version = match[2]
+        next unless gem_name && version
+
         {
-          name: match[1],
-          requirement: "= #{match[2]}"
+          name: gem_name,
+          requirement: "= #{version}"
         }
       end
     end

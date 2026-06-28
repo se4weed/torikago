@@ -63,6 +63,7 @@ module Torikago
     def infer_target_module: (String public_api_class_name) -> Symbol
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
     def dependency_allowed?: (untyped public_api_entry, Symbol caller_name) -> bool
+    def allowed_callers: (untyped public_api_entry) -> Array[untyped]
   end
 
   class Registry
@@ -102,6 +103,7 @@ module Torikago
     attr_reader name: Symbol | String
     attr_reader setup: String?
 
+    def call_with_current_execution: (String public_api_class_name, *untyped, **untyped) -> untyped
     def boot_runtime!: () -> untyped
     def load_setup_hook!: () -> untyped
     def apply_gemfile_overrides!: () -> untyped
@@ -167,6 +169,7 @@ module Torikago
     def infer_box_name: (String class_name) -> Symbol
     def infer_caller_box_from_path: (String path) -> Symbol?
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def allowed_callers: (untyped manifest_entry) -> Array[untyped]
     def underscore: (String name) -> String
     def public_api_root: (Configuration::Definition definition) -> Pathname
   end
@@ -183,6 +186,7 @@ module Torikago
     def load_manifest: (Pathname path) -> Hash[String, untyped]
     def build_manifest: (Configuration::Definition definition, Hash[String, untyped] existing_manifest) -> Hash[String, untyped]
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def allowed_callers: (untyped manifest_entry) -> Array[untyped]
     def render_manifest: (Hash[String, untyped] manifest) -> String
     def discover_public_api_classes: (Configuration::Definition definition) -> Array[String]
     def public_api_root: (Configuration::Definition definition) -> Pathname
@@ -256,6 +260,15 @@ module Bundler
   class Definition
     def self.build: (String gemfile, String? lockfile, nil unlock) -> untyped
   end
+end
+
+module YAML
+  def self.safe_load: (String yaml, ?permitted_classes: Array[untyped], ?aliases: bool) -> Hash[String, untyped]?
+  def self.dump: (Hash[String, untyped] object) -> String
+end
+
+module FileUtils
+  def self.mkdir_p: (Pathname | String path) -> untyped
 end
 
 class Gem::Specification

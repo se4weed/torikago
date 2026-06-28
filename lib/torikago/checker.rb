@@ -6,13 +6,16 @@ module Torikago
   # manifests. This is intentionally conservative; runtime enforcement still
   # lives in Gateway.
   class Checker
-    Result = Struct.new(
-      :errors,
-      :scanned_file_count,
-      :gateway_call_count,
-      :manifest_count,
-      keyword_init: true
-    ) do
+    class Result
+      attr_accessor :errors, :scanned_file_count, :gateway_call_count, :manifest_count
+
+      def initialize(errors: Array.new, scanned_file_count: 0, gateway_call_count: 0, manifest_count: 0)
+        @errors = errors
+        @scanned_file_count = scanned_file_count
+        @gateway_call_count = gateway_call_count
+        @manifest_count = manifest_count
+      end
+
       def ok?
         errors.empty?
       end
@@ -27,11 +30,11 @@ module Torikago
     def initialize(configuration:, source_roots:)
       @configuration = configuration
       @source_roots = Array(source_roots).map { |root| Pathname(root) }
-      @manifests = {}
+      @manifests = Hash.new
     end
 
     def call
-      errors = []
+      errors = Array.new
       gateway_call_count = 0
       scanned_files = source_files
 
@@ -86,7 +89,7 @@ module Torikago
         next if caller_box.nil?
         next if caller_box == target_box
 
-        allowed_callers = Array(manifest_entry["allowed_callers"]).map(&:to_s)
+        allowed_callers = allowed_callers(manifest_entry).map { |caller| caller.to_s }
         next if allowed_callers.include?(caller_box.to_s)
 
         errors << "#{path}: #{caller_box} is not allowed to call #{class_name}"
@@ -117,9 +120,9 @@ module Torikago
         manifest_path = definition.root.join("package_api.yml")
         manifests[definition.name] =
           if manifest_path.exist?
-            YAML.safe_load(manifest_path.read, permitted_classes: [], aliases: false) || {}
+            YAML.safe_load(manifest_path.read, permitted_classes: Array.new, aliases: false) || Hash.new
           else
-            {}
+            Hash.new
           end
       end
     end
@@ -140,7 +143,14 @@ module Torikago
     end
 
     def exported_package_apis(manifest)
-      manifest.fetch("exports") { manifest.fetch("public_api", {}) }
+      manifest.fetch("exports") { manifest.fetch("public_api", Hash.new) }
+    end
+
+    def allowed_callers(manifest_entry)
+      allowed = manifest_entry["allowed_callers"]
+      return allowed if allowed.is_a?(Array)
+
+      Array.new
     end
 
     def underscore(name)

@@ -7,7 +7,7 @@ module Torikago
     Definition = Struct.new(:name, :root, :entrypoint, :rails_engine, :setup, :gemfile, keyword_init: true)
 
     def initialize
-      @definitions = {}
+      @definitions = Hash.new
     end
 
     def register(name, root:, entrypoint: nil, rails_engine: false, setup: nil, gemfile: nil)
