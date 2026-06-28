@@ -254,28 +254,7 @@ module Torikago
       installed_gem_dependencies = load_installed_gem_dependencies(path)
       return installed_gem_dependencies unless installed_gem_dependencies.empty?
 
-      require "bundler"
-
-      lockfile = Pathname("#{path}.lock")
-      definition = Bundler::Definition.build(path.to_s, lockfile.exist? ? lockfile.to_s : nil, nil)
-
-      specs_by_name = definition.specs.each_with_object({}) do |spec, specs|
-        specs[spec.name] ||= spec
-      end
-
-      definition.dependencies.filter_map do |dependency|
-        spec = specs_by_name.fetch(dependency.name, nil)
-        next unless spec
-
-        requirement = dependency.requirement.to_s
-        {
-          name: dependency.name,
-          requirement: requirement,
-          require_paths: spec.full_require_paths
-        }
-      end
-    rescue Bundler::BundlerError => e
-      raise GemfileOverrideError, "failed to load gemfile for #{name}: #{e.message}"
+      load_bundler_gem_dependencies(path)
     end
 
     def load_path_gem_dependencies(path)
@@ -299,6 +278,35 @@ module Torikago
           }
         end
       end
+    end
+
+    def load_bundler_gem_dependencies(path)
+      require "bundler"
+
+      lockfile = Pathname("#{path}.lock")
+      definition = Bundler::Definition.build(path.to_s, lockfile.exist? ? lockfile.to_s : nil, nil)
+
+      specs_by_name = definition.specs.each_with_object({}) do |spec, specs|
+        specs[spec.name] ||= spec
+      end
+
+      definition.dependencies.filter_map do |dependency|
+        spec = specs_by_name.fetch(dependency.name, nil)
+        next unless spec
+
+        requirement = dependency.requirement.to_s
+        {
+          name: dependency.name,
+          requirement: requirement,
+          require_paths: spec.full_require_paths
+        }
+      end
+    rescue LoadError => e
+      raise GemfileOverrideError, "failed to load bundler for #{name}: #{e.message}"
+    rescue StandardError => e
+      raise unless defined?(Bundler::BundlerError) && e.is_a?(Bundler::BundlerError)
+
+      raise GemfileOverrideError, "failed to load gemfile for #{name}: #{e.message}"
     end
 
     def load_installed_gem_dependencies(path)
