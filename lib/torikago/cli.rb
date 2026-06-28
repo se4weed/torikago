@@ -211,6 +211,7 @@ module Torikago
         options = [
           ["entrypoint", definition.entrypoint],
           ["rails_engine", definition.rails_engine],
+          ["setup", definition.setup],
           ["gemfile", definition.gemfile]
         ].select { |_key, value| value }
 

@@ -66,6 +66,19 @@ class TorikagoCliTest < Minitest::Test
     end
   end
 
+  def test_render_initializer_includes_setup_option
+    configuration = Torikago::Configuration.new
+    configuration.register(
+      :foo,
+      root: "modules/foo",
+      setup: "config/box_setup.rb"
+    )
+
+    initializer = Torikago::CLI.new.send(:render_initializer, configuration)
+
+    assert_match(/setup: "config\/box_setup\.rb"/, initializer)
+  end
+
   def test_check_prints_summary_information
     with_cli_project do |root|
       stdout = StringIO.new
