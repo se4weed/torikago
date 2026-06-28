@@ -18,13 +18,7 @@ module Torikago
     end
 
     def call(public_api_class_name, *args, **kwargs)
-      if isolated_box_enabled?
-        without_bundler_setup_env do
-          call_with_current_execution(public_api_class_name, *args, **kwargs)
-        end
-      else
-        call_with_current_execution(public_api_class_name, *args, **kwargs)
-      end
+      call_with_current_execution(public_api_class_name, *args, **kwargs)
     end
 
     private

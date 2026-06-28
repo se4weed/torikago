@@ -45,6 +45,37 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_call_does_not_strip_bundler_env_during_public_api_execution
+    with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "app/package_api/foo/env_query.rb"),
+        <<~RUBY
+          class Foo::EnvQuery
+            def call
+              [ENV["RUBYOPT"], ENV["BUNDLER_SETUP"]]
+            end
+          end
+        RUBY
+      )
+
+      old_rubyopt = ENV["RUBYOPT"]
+      old_bundler_setup = ENV["BUNDLER_SETUP"]
+      ENV["RUBYOPT"] = "-rbundler/setup -w"
+      ENV["BUNDLER_SETUP"] = "true"
+
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        box_factory: -> { FakeBox.new }
+      )
+
+      assert_equal ["-rbundler/setup -w", "true"], container.call("Foo::EnvQuery")
+    ensure
+      restore_env("RUBYOPT", old_rubyopt)
+      restore_env("BUNDLER_SETUP", old_bundler_setup)
+    end
+  end
+
   def test_call_uses_a_configured_entrypoint_directory_when_present
     with_custom_entrypoint_module_root do |module_root|
       container = Torikago::EngineContainer.new(
@@ -535,6 +566,41 @@ class TorikagoEngineContainerTest < Minitest::Test
   end
 
   private
+
+  class FakeBox
+    attr_reader :load_path
+
+    def initialize
+      @load_path = []
+    end
+
+    def require(_name)
+    end
+
+    def load(path)
+      Kernel.load(path)
+    end
+
+    def const_defined?(name, inherit = true)
+      Object.const_defined?(name, inherit)
+    end
+
+    def const_set(name, value)
+      Object.const_set(name, value)
+    end
+
+    def const_get(name)
+      Object.const_get(name)
+    end
+  end
+
+  def restore_env(key, value)
+    if value
+      ENV[key] = value
+    else
+      ENV.delete(key)
+    end
+  end
 
   def with_module_root
     Dir.mktmpdir("torikago-engine-container") do |module_root|
