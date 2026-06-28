@@ -1,0 +1,21 @@
+<main style="max-width: 960px; margin: 0 auto; padding: 2rem; font-family: monospace; line-height: 1.6;">
+  <header style="margin-bottom: 2rem;">
+    <p style="margin: 0 0 0.5rem; color: #64748b;">torikago Rails modular monolith example</p>
+    <h1 style="margin: 0 0 1rem; font-size: 2rem;">Demo catalog</h1>
+    <p style="margin: 0; color: #334155;">
+      A catalog of the pages and APIs in this sample app. Use it to inspect which boundary each foo, bar, and baz box owns.
+    </p>
+  </header>
+
+  <section style="display: grid; gap: 1rem;">
+    <% @links.each do |link| %>
+      <article style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; background: #fff;">
+        <h2 style="margin: 0 0 0.5rem; font-size: 1.1rem;">
+          <%= link_to link.fetch(:title), link.fetch(:path), style: "color: #0f172a; text-decoration: underline;" %>
+        </h2>
+        <p style="margin: 0 0 0.75rem; color: #334155;"><%= link.fetch(:description) %></p>
+        <code style="color: #475569;"><%= link.fetch(:path) %></code>
+      </article>
+    <% end %>
+  </section>
+</main>

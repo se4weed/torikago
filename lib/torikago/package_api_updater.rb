@@ -10,7 +10,7 @@ module Torikago
     end
 
     def call(module_name = nil)
-      definitions_for(module_name).each_with_object({}) do |definition, updates|
+      definitions_for(module_name).each_with_object(Hash.new) do |definition, updates|
         manifest_path = definition.root.join("package_api.yml")
         existing_manifest = load_manifest(manifest_path)
         updated_manifest = build_manifest(definition, existing_manifest)
@@ -31,21 +31,21 @@ module Torikago
     end
 
     def load_manifest(path)
-      return {} unless path.exist?
+      return Hash.new unless path.exist?
 
-      YAML.safe_load(path.read, permitted_classes: [], aliases: false) || {}
+      YAML.safe_load(path.read, permitted_classes: Array.new, aliases: false) || Hash.new
     end
 
     def build_manifest(definition, existing_manifest)
       existing_public_api = exported_package_apis(existing_manifest)
 
-      public_api_entries = discover_public_api_classes(definition).each_with_object({}) do |class_name, entries|
-        existing_entry = existing_public_api.fetch(class_name, {})
+      public_api_entries = discover_public_api_classes(definition).each_with_object(Hash.new) do |class_name, entries|
+        existing_entry = existing_public_api.fetch(class_name, Hash.new)
 
         # update-package-api owns discovery, not policy. Keep allowed_callers so
         # the command does not silently widen or narrow module dependencies.
         entries[class_name] = {
-          "allowed_callers" => Array(existing_entry["allowed_callers"]).map(&:to_s)
+          "allowed_callers" => allowed_callers(existing_entry).map { |caller| caller.to_s }
         }
       end
 
@@ -53,7 +53,14 @@ module Torikago
     end
 
     def exported_package_apis(manifest)
-      manifest.fetch("exports") { manifest.fetch("public_api", {}) }
+      manifest.fetch("exports") { manifest.fetch("public_api", Hash.new) }
+    end
+
+    def allowed_callers(manifest_entry)
+      allowed = manifest_entry["allowed_callers"]
+      return allowed if allowed.is_a?(Array)
+
+      Array.new
     end
 
     def render_manifest(manifest)

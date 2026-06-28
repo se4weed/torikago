@@ -74,7 +74,7 @@ module Torikago
         )
 
         manifest_path = module_root.join("package_api.yml")
-        manifest = manifest_path.exist? ? load_yaml_file(manifest_path) : { "exports" => {} }
+        manifest = manifest_path.exist? ? load_yaml_file(manifest_path) : { "exports" => Hash.new }
         manifest_path.write(render_package_api_manifest(manifest))
         stdout.puts("generated #{manifest_path}")
       end
@@ -158,7 +158,7 @@ module Torikago
     end
 
     def load_yaml_file(path)
-      YAML.safe_load(path.read, permitted_classes: [], aliases: false) || {}
+      YAML.safe_load(path.read, permitted_classes: Array.new, aliases: false) || Hash.new
     end
 
     def render_initializer(configuration)
@@ -177,6 +177,11 @@ module Torikago
         "#   entrypoint:",
         "#     Directory containing exported Package API classes. The conventional",
         "#     default is app/package_api.",
+        "#",
+        "#   rails_engine:",
+        "#     Set true when the module owns a Rails::Engine entrypoint at",
+        "#     lib/<module_name>.rb. That entrypoint is then left for Rails and",
+        "#     skipped by the module Box runtime.",
         "#",
         "#   gemfile:",
         "#     Optional module-local Gemfile. When Ruby::Box isolation is enabled,",
@@ -203,8 +208,16 @@ module Torikago
         lines << "  config.register("
         lines << "    :#{definition.name},"
         lines << "    root: Rails.root.join(\"#{definition.root.to_s}\"),"
-        lines << "    entrypoint: #{definition.entrypoint.inspect}#{definition.gemfile ? "," : ""}"
-        lines << "    gemfile: #{definition.gemfile.inspect}" if definition.gemfile
+        option_lines = Array.new
+        option_lines << "    entrypoint: #{definition.entrypoint.inspect}" if definition.entrypoint
+        option_lines << "    rails_engine: #{definition.rails_engine.inspect}" if definition.rails_engine
+        option_lines << "    setup: #{definition.setup.inspect}" if definition.setup
+        option_lines << "    gemfile: #{definition.gemfile.inspect}" if definition.gemfile
+
+        option_lines.each_with_index do |option_line, index|
+          comma = index == option_lines.length - 1 ? "" : ","
+          lines << "#{option_line}#{comma}"
+        end
         lines << "  )"
         lines << ""
       end

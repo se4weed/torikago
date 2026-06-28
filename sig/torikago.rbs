@@ -19,14 +19,15 @@ module Torikago
       attr_accessor name: Symbol
       attr_accessor root: Pathname
       attr_accessor entrypoint: String?
+      attr_accessor rails_engine: bool
       attr_accessor setup: String?
       attr_accessor gemfile: String?
 
-      def initialize: (?name: Symbol, ?root: Pathname, ?entrypoint: String?, ?setup: String?, ?gemfile: String?) -> void
+      def initialize: (?name: Symbol, ?root: Pathname, ?entrypoint: String?, ?rails_engine: bool, ?setup: String?, ?gemfile: String?) -> void
     end
 
     def initialize: () -> void
-    def register: (Symbol | String name, root: Pathname | String, ?entrypoint: String?, ?setup: String?, ?gemfile: String?) -> Definition
+    def register: (Symbol | String name, root: Pathname | String, ?entrypoint: String?, ?rails_engine: bool, ?setup: String?, ?gemfile: String?) -> Definition
     def registered?: (Symbol | String name) -> bool
     def each_definition: () -> untyped
                        | () { (Definition) -> untyped } -> untyped
@@ -62,6 +63,7 @@ module Torikago
     def infer_target_module: (String public_api_class_name) -> Symbol
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
     def dependency_allowed?: (untyped public_api_entry, Symbol caller_name) -> bool
+    def allowed_callers: (untyped public_api_entry) -> Array[untyped]
   end
 
   class Registry
@@ -74,10 +76,13 @@ module Torikago
   end
 
   class EngineContainer
+    BUNDLER_SETUP_ENV_MUTEX: Mutex
+
     def initialize: (
       name: Symbol | String,
       module_root: Pathname | String,
       ?entrypoint: String?,
+      ?rails_engine: bool,
       ?setup: String?,
       ?gemfile: String?,
       ?box_factory: untyped,
@@ -98,6 +103,7 @@ module Torikago
     attr_reader name: Symbol | String
     attr_reader setup: String?
 
+    def call_with_current_execution: (String public_api_class_name, *untyped, **untyped) -> untyped
     def boot_runtime!: () -> untyped
     def load_setup_hook!: () -> untyped
     def apply_gemfile_overrides!: () -> untyped
@@ -117,14 +123,18 @@ module Torikago
     def rails_model_file?: (String path) -> bool
     def load_setup_hook_into_box!: () -> untyped
     def library_files: () -> Array[String]
+    def rails_engine?: () -> bool
     def ruby_box_runtime_available?: () -> bool
     def camelize: (String segment) -> String
     def load_gemfile_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
     def load_path_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
+    def load_bundler_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
     def load_installed_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
     def installed_specs_for: (String gem_name, String requirement) -> Array[Gem::Specification]
     def exact_version_gemfile_dependencies: (Pathname path) -> Array[Hash[Symbol, String]]
     def activate_gem_dependency: (Hash[Symbol, untyped] dependency) -> untyped
+    def without_bundler_setup_env: [A] () { () -> A } -> A
+    def without_bundler_setup_env_unsynchronized: [A] () { () -> A } -> A
   end
 
   class Checker
@@ -159,6 +169,7 @@ module Torikago
     def infer_box_name: (String class_name) -> Symbol
     def infer_caller_box_from_path: (String path) -> Symbol?
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def allowed_callers: (untyped manifest_entry) -> Array[untyped]
     def underscore: (String name) -> String
     def public_api_root: (Configuration::Definition definition) -> Pathname
   end
@@ -175,6 +186,7 @@ module Torikago
     def load_manifest: (Pathname path) -> Hash[String, untyped]
     def build_manifest: (Configuration::Definition definition, Hash[String, untyped] existing_manifest) -> Hash[String, untyped]
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
+    def allowed_callers: (untyped manifest_entry) -> Array[untyped]
     def render_manifest: (Hash[String, untyped] manifest) -> String
     def discover_public_api_classes: (Configuration::Definition definition) -> Array[String]
     def public_api_root: (Configuration::Definition definition) -> Pathname
@@ -250,6 +262,15 @@ module Bundler
   end
 end
 
+module YAML
+  def self.safe_load: (String yaml, ?permitted_classes: Array[untyped], ?aliases: bool) -> Hash[String, untyped]?
+  def self.dump: (Hash[String, untyped] object) -> String
+end
+
+module FileUtils
+  def self.mkdir_p: (Pathname | String path) -> untyped
+end
+
 class Gem::Specification
   def self.load: (String path) -> Gem::Specification?
   def self.find_all_by_name: (String name, String requirement) -> Array[Gem::Specification]
@@ -259,8 +280,4 @@ class Gem::Specification
   def version: () -> Gem::Version
   def require_paths: () -> Array[String]
   def full_require_paths: () -> Array[String]
-end
-
-class Gem::Version
-  def to_s: () -> String
 end

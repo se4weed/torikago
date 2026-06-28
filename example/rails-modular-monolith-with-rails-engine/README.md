@@ -1,0 +1,62 @@
+# rails-modular-monolith-with-rails-engine
+
+This is the Rails example app for `torikago` with `Rails::Engine` modules and one plain module mixed together.
+
+It demonstrates a Rails-first modular monolith where:
+
+- the host Rails app calls module public APIs through `Torikago::Gateway.call(...)`
+- each module declares its public surface in `package_api.yml`
+- a module can run setup code before its public API is loaded
+- a module can own its Rails routes through a mounted `Rails::Engine`
+- another module can skip `Rails::Engine` and use host app routes while still using a Torikago Box
+
+## Layout
+
+- `modules/foo`
+  - example module with a `setup` hook that monkey-patches `String#+`
+- `modules/bar`
+  - example module with query / command style public APIs
+- `config/initializers/torikago.rb`
+  - registers module roots and uses `rails_engine: true` for foo, bar, and baz
+- `modules/{foo,bar,baz}/lib/*.rb`
+  - defines each Rails::Engine module's entrypoint
+- `modules/{foo,bar,baz}/config/routes.rb`
+  - defines module-local HTTP routes mounted by the host app
+- `modules/qux`
+  - plain module without a `Rails::Engine`, routed by the host app while using
+    Torikago's default Box loading rules
+
+## Compared With The Non-Engine Example
+
+This app defines `Foo::Engine`, `Bar::Engine`, and `Baz::Engine`, and the host
+app mounts them from `config/routes.rb`. It also registers `qux` without
+`rails_engine: true` to show that Rails::Engine and non-Engine modules can
+coexist. Torikago still owns the Box runtime for package API calls; Rails owns
+the HTTP/runtime integration for controllers, views, and route sets.
+
+See `../rails-modular-monolith` for the same app organized without
+`Rails::Engine`, using host app routes and host app module autoload paths.
+
+## Running
+
+`Ruby::Box` must be enabled when running this example.
+
+```sh
+bundle exec bin/box-rails s
+```
+
+## Testing
+
+```sh
+bundle exec bin/box-rails test
+```
+
+## Notes About Boot
+
+Under `RUBY_BOX=1`, this example currently uses a few pragmatic boot workarounds so Rails and Bundler start reliably:
+
+- Bundler plugins are disabled
+- `tmpdir` is loaded and guarded early
+- when `RUBY_BOX=1`, app boot avoids `Bundler.require(*Rails.groups)` and requires the needed gems explicitly
+
+These are current integration workarounds for the example app, not a finalized long-term contract for `torikago` itself.

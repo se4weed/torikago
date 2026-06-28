@@ -4,7 +4,7 @@ module Torikago
   class Registry
     def initialize(configuration:, &container_factory)
       @configuration = configuration
-      @containers = {}
+      @containers = Hash.new
       @container_factory = container_factory || method(:build_container)
     end
 
@@ -26,6 +26,7 @@ module Torikago
         name: definition.name,
         module_root: definition.root,
         entrypoint: definition.entrypoint,
+        rails_engine: definition.rails_engine,
         setup: definition.setup,
         gemfile: definition.gemfile
       )

@@ -15,7 +15,7 @@ module Torikago
       @registry = registry
       @configuration = configuration
       @manifest_loader = manifest_loader || method(:load_manifest)
-      @manifests = {}
+      @manifests = Hash.new
     end
 
     def call(public_api_class_name, *args, **kwargs)
@@ -64,7 +64,7 @@ module Torikago
               "package_api manifest not found for #{definition.name}: #{manifest_path}"
       end
 
-      YAML.safe_load(manifest_path.read, permitted_classes: [], aliases: false) || {}
+      YAML.safe_load(manifest_path.read, permitted_classes: Array.new, aliases: false) || Hash.new
     end
 
     def package_api_manifest_path(definition)
@@ -76,11 +76,18 @@ module Torikago
     end
 
     def exported_package_apis(manifest)
-      manifest.fetch("exports") { manifest.fetch("public_api", {}) }
+      manifest.fetch("exports") { manifest.fetch("public_api", Hash.new) }
     end
 
     def dependency_allowed?(public_api_entry, caller_name)
-      Array(public_api_entry["allowed_callers"]).map(&:to_sym).include?(caller_name)
+      allowed_callers(public_api_entry).map { |caller| caller.to_sym }.include?(caller_name)
+    end
+
+    def allowed_callers(public_api_entry)
+      allowed = public_api_entry["allowed_callers"]
+      return allowed if allowed.is_a?(Array)
+
+      Array.new
     end
   end
 end

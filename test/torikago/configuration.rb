@@ -10,6 +10,7 @@ class TorikagoConfigurationTest < Minitest::Test
       :foo,
       root: "/modules/foo",
       entrypoint: "lib/foo/box_runtime.rb",
+      rails_engine: true,
       setup: "config/box_setup.rb",
       gemfile: "Gemfile"
     )
@@ -19,6 +20,7 @@ class TorikagoConfigurationTest < Minitest::Test
     assert_equal :foo, definition.name
     assert_equal "/modules/foo", definition.root.to_s
     assert_equal "lib/foo/box_runtime.rb", definition.entrypoint
+    assert_equal true, definition.rails_engine
     assert_equal "config/box_setup.rb", definition.setup
     assert_equal "Gemfile", definition.gemfile
   end

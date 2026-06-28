@@ -7,6 +7,7 @@ class TorikagoRegistryTest < Minitest::Test
       :foo,
       root: "/modules/foo",
       entrypoint: "lib/foo/box_runtime.rb",
+      rails_engine: true,
       setup: "config/box_setup.rb",
       gemfile: "Gemfile"
     )
@@ -18,6 +19,7 @@ class TorikagoRegistryTest < Minitest::Test
         name: definition.name,
         root: definition.root.to_s,
         entrypoint: definition.entrypoint,
+        rails_engine: definition.rails_engine,
         setup: definition.setup,
         gemfile: definition.gemfile
       }
@@ -28,6 +30,7 @@ class TorikagoRegistryTest < Minitest::Test
     assert_equal :foo, container[:name]
     assert_equal "/modules/foo", container[:root]
     assert_equal "lib/foo/box_runtime.rb", container[:entrypoint]
+    assert_equal true, container[:rails_engine]
     assert_equal "config/box_setup.rb", container[:setup]
     assert_equal "Gemfile", container[:gemfile]
   end

@@ -45,6 +45,81 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_call_does_not_strip_bundler_env_during_public_api_execution
+    with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "app/package_api/foo/env_query.rb"),
+        <<~RUBY
+          class Foo::EnvQuery
+            def call
+              [ENV["RUBYOPT"], ENV["BUNDLER_SETUP"]]
+            end
+          end
+        RUBY
+      )
+
+      old_rubyopt = ENV["RUBYOPT"]
+      old_bundler_setup = ENV["BUNDLER_SETUP"]
+      ENV["RUBYOPT"] = "-rbundler/setup -w"
+      ENV["BUNDLER_SETUP"] = "true"
+
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        box_factory: -> { FakeBox.new }
+      )
+
+      assert_equal ["-rbundler/setup -w", "true"], container.call("Foo::EnvQuery")
+    ensure
+      restore_env("RUBYOPT", old_rubyopt)
+      restore_env("BUNDLER_SETUP", old_bundler_setup)
+    end
+  end
+
+  def test_bundler_env_stripping_is_serialized_across_containers
+    first_container = Torikago::EngineContainer.new(name: :foo, module_root: Dir.pwd)
+    second_container = Torikago::EngineContainer.new(name: :bar, module_root: Dir.pwd)
+    first_entered = Queue.new
+    release_first = Queue.new
+    second_ready = Queue.new
+    second_entered = Queue.new
+
+    old_rubyopt = ENV["RUBYOPT"]
+    old_bundler_setup = ENV["BUNDLER_SETUP"]
+    ENV["RUBYOPT"] = "-rbundler/setup"
+    ENV["BUNDLER_SETUP"] = "true"
+
+    first_thread = Thread.new do
+      first_container.send(:without_bundler_setup_env) do
+        first_entered << true
+        release_first.pop
+      end
+    end
+    first_entered.pop
+
+    second_thread = Thread.new do
+      second_ready << true
+      second_container.send(:without_bundler_setup_env) do
+        second_entered << true
+      end
+    end
+    second_ready.pop
+
+    sleep 0.05
+    assert_predicate second_entered, :empty?
+
+    release_first << true
+    first_thread.join
+    second_thread.join
+
+    refute_predicate second_entered, :empty?
+  ensure
+    first_thread&.kill if first_thread&.alive?
+    second_thread&.kill if second_thread&.alive?
+    restore_env("RUBYOPT", old_rubyopt)
+    restore_env("BUNDLER_SETUP", old_bundler_setup)
+  end
+
   def test_call_uses_a_configured_entrypoint_directory_when_present
     with_custom_entrypoint_module_root do |module_root|
       container = Torikago::EngineContainer.new(
@@ -80,6 +155,74 @@ class TorikagoEngineContainerTest < Minitest::Test
       end
 
       assert_match(/MissingQuery/, error.message)
+    end
+  end
+
+  def test_call_loads_plain_lib_entrypoint_by_default
+    with_module_root do |module_root|
+      lib_dir = File.join(module_root, "lib")
+      FileUtils.mkdir_p(lib_dir)
+      File.write(
+        File.join(lib_dir, "foo.rb"),
+        <<~RUBY
+          module Foo
+            PLAIN_LIB_ENTRYPOINT = "loaded"
+          end
+        RUBY
+      )
+      File.write(
+        File.join(module_root, "app/package_api/foo/plain_lib_entrypoint_query.rb"),
+        <<~RUBY
+          class Foo::PlainLibEntrypointQuery
+            def call
+              Foo::PLAIN_LIB_ENTRYPOINT
+            end
+          end
+        RUBY
+      )
+
+      container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      assert_equal "loaded", container.call("Foo::PlainLibEntrypointQuery")
+    end
+  end
+
+  def test_call_skips_only_the_module_lib_entrypoint_when_rails_engine_is_enabled
+    with_module_root do |module_root|
+      lib_dir = File.join(module_root, "lib")
+      FileUtils.mkdir_p(File.join(lib_dir, "foo"))
+      File.write(
+        File.join(lib_dir, "foo.rb"),
+        <<~RUBY
+          raise "Rails::Engine entrypoint should be loaded by Rails, not EngineContainer"
+        RUBY
+      )
+      File.write(
+        File.join(lib_dir, "foo/support.rb"),
+        <<~RUBY
+          module Foo
+            SUPPORT_VALUE = "ordinary lib file loaded"
+          end
+        RUBY
+      )
+      File.write(
+        File.join(module_root, "app/package_api/foo/rails_engine_support_query.rb"),
+        <<~RUBY
+          class Foo::RailsEngineSupportQuery
+            def call
+              Foo::SUPPORT_VALUE
+            end
+          end
+        RUBY
+      )
+
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        rails_engine: true
+      )
+
+      assert_equal "ordinary lib file loaded", container.call("Foo::RailsEngineSupportQuery")
     end
   end
 
@@ -467,6 +610,41 @@ class TorikagoEngineContainerTest < Minitest::Test
   end
 
   private
+
+  class FakeBox
+    attr_reader :load_path
+
+    def initialize
+      @load_path = []
+    end
+
+    def require(_name)
+    end
+
+    def load(path)
+      Kernel.load(path)
+    end
+
+    def const_defined?(name, inherit = true)
+      Object.const_defined?(name, inherit)
+    end
+
+    def const_set(name, value)
+      Object.const_set(name, value)
+    end
+
+    def const_get(name)
+      Object.const_get(name)
+    end
+  end
+
+  def restore_env(key, value)
+    if value
+      ENV[key] = value
+    else
+      ENV.delete(key)
+    end
+  end
 
   def with_module_root
     Dir.mktmpdir("torikago-engine-container") do |module_root|

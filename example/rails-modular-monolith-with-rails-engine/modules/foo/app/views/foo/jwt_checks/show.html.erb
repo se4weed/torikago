@@ -1,0 +1,30 @@
+<main>
+  <h1>JWT Compatibility Checks</h1>
+
+  <p>
+    This page runs the same JWT compatibility checks in the main app, the foo Box, and the bar Box.
+  </p>
+
+  <% @report.results.each do |result| %>
+    <section>
+      <h2><%= result.fetch("runtime") %></h2>
+      <p><strong>JWT version:</strong> <%= result.fetch("version") %></p>
+
+      <% result.fetch("checks").each do |check| %>
+        <article>
+          <h3><%= check.fetch("name") %></h3>
+          <dl>
+            <dt>expected change</dt>
+            <dd><%= check.fetch("expected_change") %></dd>
+
+            <dt>status</dt>
+            <dd><%= check.fetch("status") %></dd>
+
+            <dt>result</dt>
+            <dd><code><%= check.fetch("result") %></code></dd>
+          </dl>
+        </article>
+      <% end %>
+    </section>
+  <% end %>
+</main>
