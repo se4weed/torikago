@@ -5,6 +5,8 @@ module Torikago
   # loads the module into an isolated Box; otherwise it falls back to the host
   # process for development and tests.
   class EngineContainer
+    BUNDLER_SETUP_ENV_MUTEX = Mutex.new
+
     def initialize(name:, module_root:, entrypoint: nil, rails_engine: false, setup: nil, gemfile: nil, box_factory: nil, gemfile_dependency_loader: nil, gem_activator: nil)
       @name = name
       @module_root = Pathname(module_root)
@@ -353,6 +355,16 @@ module Torikago
     end
 
     def without_bundler_setup_env
+      if BUNDLER_SETUP_ENV_MUTEX.owned?
+        without_bundler_setup_env_unsynchronized { yield }
+      else
+        BUNDLER_SETUP_ENV_MUTEX.synchronize do
+          without_bundler_setup_env_unsynchronized { yield }
+        end
+      end
+    end
+
+    def without_bundler_setup_env_unsynchronized
       rubyopt = ENV["RUBYOPT"]
       bundler_setup = ENV["BUNDLER_SETUP"]
 

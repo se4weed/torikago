@@ -76,6 +76,50 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_bundler_env_stripping_is_serialized_across_containers
+    first_container = Torikago::EngineContainer.new(name: :foo, module_root: Dir.pwd)
+    second_container = Torikago::EngineContainer.new(name: :bar, module_root: Dir.pwd)
+    first_entered = Queue.new
+    release_first = Queue.new
+    second_ready = Queue.new
+    second_entered = Queue.new
+
+    old_rubyopt = ENV["RUBYOPT"]
+    old_bundler_setup = ENV["BUNDLER_SETUP"]
+    ENV["RUBYOPT"] = "-rbundler/setup"
+    ENV["BUNDLER_SETUP"] = "true"
+
+    first_thread = Thread.new do
+      first_container.send(:without_bundler_setup_env) do
+        first_entered << true
+        release_first.pop
+      end
+    end
+    first_entered.pop
+
+    second_thread = Thread.new do
+      second_ready << true
+      second_container.send(:without_bundler_setup_env) do
+        second_entered << true
+      end
+    end
+    second_ready.pop
+
+    sleep 0.05
+    assert_predicate second_entered, :empty?
+
+    release_first << true
+    first_thread.join
+    second_thread.join
+
+    refute_predicate second_entered, :empty?
+  ensure
+    first_thread&.kill if first_thread&.alive?
+    second_thread&.kill if second_thread&.alive?
+    restore_env("RUBYOPT", old_rubyopt)
+    restore_env("BUNDLER_SETUP", old_bundler_setup)
+  end
+
   def test_call_uses_a_configured_entrypoint_directory_when_present
     with_custom_entrypoint_module_root do |module_root|
       container = Torikago::EngineContainer.new(
