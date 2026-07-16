@@ -43,7 +43,7 @@ jobs:
         run: |
           gem install rake -v 13.3.1 --no-document
           gem install rake -v 13.4.2 --no-document
-          gem install minitest --no-document
+          gem install minitest -v 6.0.6 --no-document
 
       - name: Set test RUBYLIB
         run: |

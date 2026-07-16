@@ -1,6 +1,5 @@
 require "minitest/autorun"
 
-ENV["RUBY_BOX"] = "1"
 ENV["RAILS_ENV"] = "test"
 
 lib_dir = File.expand_path("../lib", __dir__)
