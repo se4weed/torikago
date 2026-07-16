@@ -49,10 +49,12 @@ jobs:
         run: |
           ruby -e 'paths = ["lib", *Gem::Specification.find_by_name("rake", "= 13.4.2").full_require_paths]; File.open(ENV.fetch("GITHUB_ENV"), "a") { |file| file.puts("RUBYLIB=#{paths.join(File::PATH_SEPARATOR)}") }'
 
-      - name: rake test
+      - name: rake test (RUBY_BOX=0)
         run: rake test
+        env:
+          RUBY_BOX: "0"
 
-      - name: rake test (RUBY_BOX=true)
+      - name: rake test (RUBY_BOX=1)
         run: rake test
         env:
           RUBY_BOX: "1"

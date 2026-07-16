@@ -1,9 +1,17 @@
 exports:
   Bar::GemVersionQuery:
+    methods:
+      - call
     allowed_callers: []
   Bar::JwtCompatibilityQuery:
+    methods:
+      - call
     allowed_callers: []
   Bar::SafeBannerQuery:
+    methods:
+      - call
     allowed_callers: []
   Bar::LookupAddressQuery:
+    methods:
+      - call
     allowed_callers: []

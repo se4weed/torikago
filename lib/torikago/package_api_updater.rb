@@ -3,7 +3,8 @@ require "yaml"
 
 module Torikago
   # Regenerates package_api.yml from files under a module's public API
-  # entrypoint while preserving caller permissions already chosen by humans.
+  # entrypoint while preserving exported methods and caller permissions already
+  # chosen by humans.
   class PackageApiUpdater
     def initialize(configuration:)
       @configuration = configuration
@@ -42,9 +43,10 @@ module Torikago
       public_api_entries = discover_public_api_classes(definition).each_with_object(Hash.new) do |class_name, entries|
         existing_entry = existing_public_api.fetch(class_name, Hash.new)
 
-        # update-package-api owns discovery, not policy. Keep allowed_callers so
-        # the command does not silently widen or narrow module dependencies.
+        # update-package-api owns discovery, not policy. Keep methods and
+        # allowed_callers so the command does not change the public surface.
         entries[class_name] = {
+          "methods" => exported_methods(existing_entry),
           "allowed_callers" => allowed_callers(existing_entry).map { |caller| caller.to_s }
         }
       end
@@ -57,8 +59,19 @@ module Torikago
     end
 
     def allowed_callers(manifest_entry)
+      return Array.new unless manifest_entry.is_a?(Hash)
+
       allowed = manifest_entry["allowed_callers"]
       return allowed if allowed.is_a?(Array)
+
+      Array.new
+    end
+
+    def exported_methods(manifest_entry)
+      return Array.new unless manifest_entry.is_a?(Hash)
+
+      methods = manifest_entry["methods"]
+      return methods.map(&:to_s) if methods.is_a?(Array)
 
       Array.new
     end
@@ -69,8 +82,9 @@ module Torikago
         #
         # Each key under exports is a class that may be called through:
         #
-        #   Torikago::Gateway.call("ModuleName::SomeQuery")
+        #   Torikago::Gateway.invoke("ModuleName::SomeQuery", :call)
         #
+        # methods lists the public instance methods exposed through Gateway.
         # allowed_callers lists other modules that may call that export. The
         # host app and the module itself are allowed implicitly.
         #

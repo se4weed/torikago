@@ -1,4 +1,6 @@
 exports:
   Baz::SafeBannerQuery:
+    methods:
+      - call
     allowed_callers:
       - foo

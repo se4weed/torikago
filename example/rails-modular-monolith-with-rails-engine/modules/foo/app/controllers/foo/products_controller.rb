@@ -1,7 +1,7 @@
 class Foo::ProductsController < Foo::ApplicationController
   def index
     render json: {
-      data: Torikago::Gateway.call("Foo::ListProductsQuery")
+      data: Torikago::Gateway.invoke("Foo::ListProductsQuery", :call)
     }
   end
 end

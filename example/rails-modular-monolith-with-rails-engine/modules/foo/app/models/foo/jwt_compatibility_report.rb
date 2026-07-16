@@ -4,8 +4,8 @@ class Foo::JwtCompatibilityReport
   def self.build
     new(
       main_result: run_checks("main app"),
-      foo_result: Torikago::Gateway.call("Foo::JwtCompatibilityQuery"),
-      bar_result: Torikago::Gateway.call("Bar::JwtCompatibilityQuery")
+      foo_result: Torikago::Gateway.invoke("Foo::JwtCompatibilityQuery", :call),
+      bar_result: Torikago::Gateway.invoke("Bar::JwtCompatibilityQuery", :call)
     )
   end
 

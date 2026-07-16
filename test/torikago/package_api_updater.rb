@@ -22,8 +22,8 @@ class TorikagoPackageApiUpdaterTest < Minitest::Test
       assert_equal(
         {
           "exports" => {
-            "Foo::UserCreateCommand" => { "allowed_callers" => [] },
-            "Foo::UserFindQuery" => { "allowed_callers" => [] }
+            "Foo::UserCreateCommand" => { "methods" => [], "allowed_callers" => [] },
+            "Foo::UserFindQuery" => { "methods" => [], "allowed_callers" => [] }
           }
         },
         manifest
@@ -42,6 +42,8 @@ class TorikagoPackageApiUpdaterTest < Minitest::Test
         <<~YAML
           exports:
             Foo::UserCreateCommand:
+              methods:
+                - execute!
               allowed_callers:
                 - bar
         YAML
@@ -54,6 +56,7 @@ class TorikagoPackageApiUpdaterTest < Minitest::Test
       manifest = YAML.safe_load(File.read(File.join(module_root, "package_api.yml")))
 
       assert_equal ["bar"], manifest.dig("exports", "Foo::UserCreateCommand", "allowed_callers")
+      assert_equal ["execute!"], manifest.dig("exports", "Foo::UserCreateCommand", "methods")
     end
   end
 
@@ -71,7 +74,7 @@ class TorikagoPackageApiUpdaterTest < Minitest::Test
       manifest = YAML.safe_load(File.read(File.join(module_root, "package_api.yml")))
 
       assert_equal(
-        { "allowed_callers" => [] },
+        { "methods" => [], "allowed_callers" => [] },
         manifest.dig("exports", "Foo::UserCreateCommand")
       )
     end

@@ -8,8 +8,8 @@ class Foo::PostcodeLookup
   end
 
   def call
-    @foo_result = Torikago::Gateway.call("Foo::LookupAddressQuery", postal_code)
-    @bar_result = Torikago::Gateway.call("Bar::LookupAddressQuery", postal_code)
+    @foo_result = Torikago::Gateway.invoke("Foo::LookupAddressQuery", :call, postal_code)
+    @bar_result = Torikago::Gateway.invoke("Bar::LookupAddressQuery", :call, postal_code)
     self
   end
 

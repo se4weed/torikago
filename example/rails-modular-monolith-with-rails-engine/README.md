@@ -4,8 +4,8 @@ This is the Rails example app for `torikago` with `Rails::Engine` modules and on
 
 It demonstrates a Rails-first modular monolith where:
 
-- the host Rails app calls module public APIs through `Torikago::Gateway.call(...)`
-- each module declares its public surface in `package_api.yml`
+- the host Rails app calls module public methods through `Torikago::Gateway.invoke(...)` or `build(...).invoke(...)`
+- each module declares its public classes, methods, and callers in `package_api.yml`
 - a module can run setup code before its public API is loaded
 - a module can own its Rails routes through a mounted `Rails::Engine`
 - another module can skip `Rails::Engine` and use host app routes while still using a Torikago Box

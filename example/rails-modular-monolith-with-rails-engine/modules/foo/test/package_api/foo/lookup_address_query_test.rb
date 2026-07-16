@@ -2,7 +2,7 @@ require_relative "../../../../../test/test_helper"
 
 class Foo::LookupAddressQueryTest < ActiveSupport::TestCase
   test "call returns a missing result for a postcode absent from the foo snapshot" do
-    result = Torikago::Gateway.call("Foo::LookupAddressQuery", "013-0310")
+    result = Torikago::Gateway.invoke("Foo::LookupAddressQuery", :call, "013-0310")
 
     assert_equal false, result.fetch("success")
     assert_equal "foo", result.fetch("module")

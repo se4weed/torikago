@@ -1,12 +1,23 @@
 exports:
   Foo::DangerousAsciiArtQuery:
+    methods:
+      - call
     allowed_callers: []
   Foo::GemVersionQuery:
+    methods:
+      - call
     allowed_callers: []
   Foo::JwtCompatibilityQuery:
+    methods:
+      - call
     allowed_callers: []
   Foo::ListProductsQuery:
+    methods:
+      - call
+      - execute!
     allowed_callers:
       - baz
   Foo::LookupAddressQuery:
+    methods:
+      - call
     allowed_callers: []

@@ -12,40 +12,40 @@ class TorikagoEngineContainerTest < Minitest::Test
     Object.send(:remove_const, :VersionedFormatter) if Object.const_defined?(:VersionedFormatter, false)
   end
 
-  def test_call_loads_the_public_api_class_and_executes_call
+  def test_invoke_loads_the_public_api_class_and_executes_call
     with_module_root do |module_root|
       container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
 
-      result = container.call("Foo::ListProductsQuery")
+      result = container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
 
       assert_equal ["coffee-beans", "drip-bag"], result
     end
   end
 
-  def test_call_reuses_loaded_runtime_files_across_calls
+  def test_invoke_reuses_loaded_runtime_files_across_calls
     with_module_root do |module_root|
       container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
 
-      first = container.call("Foo::ListProductsQuery")
-      second = container.call("Foo::ListProductsQuery")
+      first = container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      second = container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
 
       assert_equal ["coffee-beans", "drip-bag"], first
       assert_equal ["coffee-beans", "drip-bag"], second
     end
   end
 
-  def test_call_sets_the_current_box_during_execution
+  def test_invoke_sets_the_current_box_during_execution
     with_module_root do |module_root|
       container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
 
-      result = container.call("Foo::CurrentBoxQuery")
+      result = container.invoke("Foo::CurrentBoxQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
 
       assert_equal :foo, result
       assert_nil Torikago::CurrentExecution.current_box
     end
   end
 
-  def test_call_does_not_strip_bundler_env_during_public_api_execution
+  def test_invoke_does_not_strip_bundler_env_during_public_api_execution
     with_module_root do |module_root|
       File.write(
         File.join(module_root, "app/package_api/foo/env_query.rb"),
@@ -69,7 +69,7 @@ class TorikagoEngineContainerTest < Minitest::Test
         box_factory: -> { FakeBox.new }
       )
 
-      assert_equal ["-rbundler/setup -w", "true"], container.call("Foo::EnvQuery")
+      assert_equal ["-rbundler/setup -w", "true"], container.invoke("Foo::EnvQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
     ensure
       restore_env("RUBYOPT", old_rubyopt)
       restore_env("BUNDLER_SETUP", old_bundler_setup)
@@ -120,7 +120,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     restore_env("BUNDLER_SETUP", old_bundler_setup)
   end
 
-  def test_call_uses_a_configured_entrypoint_directory_when_present
+  def test_invoke_uses_a_configured_entrypoint_directory_when_present
     with_custom_entrypoint_module_root do |module_root|
       container = Torikago::EngineContainer.new(
         name: :foo,
@@ -128,13 +128,13 @@ class TorikagoEngineContainerTest < Minitest::Test
         entrypoint: "components/public_api"
       )
 
-      result = container.call("Foo::CustomEntryPointQuery")
+      result = container.invoke("Foo::CustomEntryPointQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
 
       assert_equal "custom entrypoint", result
     end
   end
 
-  def test_call_does_not_load_parent_files_when_configured_entrypoint_directory_is_missing
+  def test_invoke_does_not_load_parent_files_when_configured_entrypoint_directory_is_missing
     Dir.mktmpdir("torikago-engine-container") do |module_root|
       FileUtils.mkdir_p(File.join(module_root, "app/controllers/foo"))
       File.write(
@@ -151,14 +151,14 @@ class TorikagoEngineContainerTest < Minitest::Test
       )
 
       error = assert_raises(NameError) do
-        container.call("Foo::MissingQuery")
+        container.invoke("Foo::MissingQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
       end
 
       assert_match(/MissingQuery/, error.message)
     end
   end
 
-  def test_call_loads_plain_lib_entrypoint_by_default
+  def test_invoke_loads_plain_lib_entrypoint_by_default
     with_module_root do |module_root|
       lib_dir = File.join(module_root, "lib")
       FileUtils.mkdir_p(lib_dir)
@@ -183,11 +183,11 @@ class TorikagoEngineContainerTest < Minitest::Test
 
       container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
 
-      assert_equal "loaded", container.call("Foo::PlainLibEntrypointQuery")
+      assert_equal "loaded", container.invoke("Foo::PlainLibEntrypointQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
     end
   end
 
-  def test_call_skips_only_the_module_lib_entrypoint_when_rails_engine_is_enabled
+  def test_invoke_skips_only_the_module_lib_entrypoint_when_rails_engine_is_enabled
     with_module_root do |module_root|
       lib_dir = File.join(module_root, "lib")
       FileUtils.mkdir_p(File.join(lib_dir, "foo"))
@@ -222,11 +222,11 @@ class TorikagoEngineContainerTest < Minitest::Test
         rails_engine: true
       )
 
-      assert_equal "ordinary lib file loaded", container.call("Foo::RailsEngineSupportQuery")
+      assert_equal "ordinary lib file loaded", container.invoke("Foo::RailsEngineSupportQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
     end
   end
 
-  def test_call_prepends_explicit_gemfile_require_paths_before_loading_runtime
+  def test_invoke_prepends_explicit_gemfile_require_paths_before_loading_runtime
     with_module_root do |module_root|
       dependency_lib = File.join(module_root, "vendor/example-gem-1.2.3/lib")
       FileUtils.mkdir_p(dependency_lib)
@@ -274,7 +274,7 @@ class TorikagoEngineContainerTest < Minitest::Test
             end
           )
 
-          raise "unexpected result" unless container.call("Foo::DependencyVersionQuery") == "module-local"
+          raise "unexpected result" unless container.invoke("Foo::DependencyVersionQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {}) == "module-local"
 
           puts "ok"
         RUBY
@@ -284,7 +284,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_resolves_path_gem_require_paths_inside_ruby_box
+  def test_invoke_resolves_path_gem_require_paths_inside_ruby_box
     Dir.mktmpdir("torikago-engine-container") do |module_root|
       dependency_lib = File.join(module_root, "vendor/example-gem-1.0.0/lib")
       FileUtils.mkdir_p(dependency_lib)
@@ -346,7 +346,7 @@ class TorikagoEngineContainerTest < Minitest::Test
             gemfile: "Gemfile"
           )
 
-          raise "unexpected result" unless container.call("Foo::DependencyVersionQuery") == "module-local"
+          raise "unexpected result" unless container.invoke("Foo::DependencyVersionQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {}) == "module-local"
 
           puts "ok"
         RUBY
@@ -355,7 +355,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_resolves_path_gem_require_paths_from_the_module_gemfile
+  def test_invoke_resolves_path_gem_require_paths_from_the_module_gemfile
     Dir.mktmpdir("torikago-engine-container") do |module_root|
       dependency_root = File.join(module_root, "vendor/versioned_formatter")
       dependency_lib = File.join(dependency_root, "lib")
@@ -418,7 +418,7 @@ class TorikagoEngineContainerTest < Minitest::Test
             gemfile: "Gemfile"
           )
 
-          raise "unexpected result" unless container.call("Foo::GemfileDependencyQuery") == "1.0.0"
+          raise "unexpected result" unless container.invoke("Foo::GemfileDependencyQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {}) == "1.0.0"
 
           puts "ok"
         RUBY
@@ -427,7 +427,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_resolves_exact_installed_gem_require_paths_after_a_different_version_is_active
+  def test_invoke_resolves_exact_installed_gem_require_paths_after_a_different_version_is_active
     skip("requires rake 13.3.1 and 13.4.2") unless installed_gem?("rake", "= 13.3.1") && installed_gem?("rake", "= 13.4.2")
 
     Dir.mktmpdir("torikago-engine-container") do |module_root|
@@ -457,7 +457,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_reports_missing_installed_gemfile_dependencies_clearly
+  def test_invoke_reports_missing_installed_gemfile_dependencies_clearly
     with_module_root do |module_root|
       File.write(
         File.join(module_root, "Gemfile"),
@@ -475,7 +475,7 @@ class TorikagoEngineContainerTest < Minitest::Test
       )
 
       error = assert_raises(Torikago::GemfileOverrideError) do
-        container.call("Foo::ListProductsQuery")
+        container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
       end
 
       assert_match(/example-gem/, error.message)
@@ -483,7 +483,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_loads_configured_setup_before_public_api
+  def test_invoke_loads_configured_setup_before_public_api
     with_module_root do |module_root|
       setup_dir = File.join(module_root, "config")
       FileUtils.mkdir_p(setup_dir)
@@ -513,11 +513,11 @@ class TorikagoEngineContainerTest < Minitest::Test
         setup: "config/box_setup.rb"
       )
 
-      assert_equal "patched", container.call("Foo::SetupAwareQuery")
+      assert_equal "patched", container.invoke("Foo::SetupAwareQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
     end
   end
 
-  def test_call_loads_setup_only_once
+  def test_invoke_loads_setup_only_once
     with_module_root do |module_root|
       setup_dir = File.join(module_root, "config")
       FileUtils.mkdir_p(setup_dir)
@@ -547,12 +547,12 @@ class TorikagoEngineContainerTest < Minitest::Test
         setup: "config/box_setup.rb"
       )
 
-      assert_equal 1, container.call("Foo::SetupCountQuery")
-      assert_equal 1, container.call("Foo::SetupCountQuery")
+      assert_equal 1, container.invoke("Foo::SetupCountQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      assert_equal 1, container.invoke("Foo::SetupCountQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
     end
   end
 
-  def test_call_raises_load_error_when_setup_is_missing
+  def test_invoke_raises_load_error_when_setup_is_missing
     with_module_root do |module_root|
       container = Torikago::EngineContainer.new(
         name: :foo,
@@ -561,7 +561,7 @@ class TorikagoEngineContainerTest < Minitest::Test
       )
 
       error = assert_raises(LoadError) do
-        container.call("Foo::ListProductsQuery")
+        container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
       end
 
       assert_match(/setup not found/, error.message)
@@ -569,7 +569,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_loads_plain_gateway_models_without_eager_loading_rails_models
+  def test_invoke_loads_plain_gateway_models_without_eager_loading_rails_models
     with_module_root do |module_root|
       model_dir = File.join(module_root, "app/models/foo")
       FileUtils.mkdir_p(model_dir)
@@ -605,7 +605,178 @@ class TorikagoEngineContainerTest < Minitest::Test
 
       container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
 
-      assert_equal ["order"], container.call("Foo::ListOrdersQuery")
+      assert_equal ["order"], container.invoke("Foo::ListOrdersQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+    end
+  end
+
+  def test_invoke_keeps_constructor_and_method_arguments_separate
+    with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "app/package_api/foo/product_query.rb"),
+        <<~RUBY
+          class Foo::ProductQuery
+            def initialize(prefix, page:)
+              @prefix = prefix
+              @page = page
+            end
+
+            def execute!(suffix, force:)
+              [@prefix, @page, suffix, force, Torikago::CurrentExecution.current_box]
+            end
+          end
+        RUBY
+      )
+      container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      result = container.invoke(
+        "Foo::ProductQuery",
+        :execute!,
+        constructor_args: ["products"],
+        constructor_kwargs: { page: 2 },
+        method_args: ["refresh"],
+        method_kwargs: { force: true }
+      )
+
+      assert_equal ["products", 2, "refresh", true, :foo], result
+      assert_nil Torikago::CurrentExecution.current_box
+    end
+  end
+
+  def test_invoke_rejects_private_methods
+    with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "app/package_api/foo/private_query.rb"),
+        <<~RUBY
+          class Foo::PrivateQuery
+            private
+
+            def execute!
+              "should not run"
+            end
+          end
+        RUBY
+      )
+      container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      assert_raises(NoMethodError) do
+        container.invoke("Foo::PrivateQuery", :execute!, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      end
+    end
+  end
+
+  def test_invoke_preserves_constructor_and_method_exceptions
+    with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "app/package_api/foo/failing_query.rb"),
+        <<~RUBY
+          class Foo::FailingQuery
+            def initialize(fail_constructor: false)
+              raise "constructor failed" if fail_constructor
+            end
+
+            def execute!
+              raise "method failed"
+            end
+          end
+        RUBY
+      )
+      constructor_container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+      method_container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      constructor_error = assert_raises(RuntimeError) do
+        constructor_container.invoke(
+          "Foo::FailingQuery",
+          :execute!,
+          constructor_args: [],
+          constructor_kwargs: { fail_constructor: true },
+          method_args: [],
+          method_kwargs: {}
+        )
+      end
+      method_error = assert_raises(RuntimeError) do
+        method_container.invoke(
+          "Foo::FailingQuery",
+          :execute!,
+          constructor_args: [],
+          constructor_kwargs: {},
+          method_args: [],
+          method_kwargs: {}
+        )
+      end
+
+      assert_equal "constructor failed", constructor_error.message
+      assert_equal "method failed", method_error.message
+    end
+  end
+
+  def test_invoke_restores_current_execution_after_nested_execution
+    with_module_root do |module_root|
+      File.write(
+        File.join(module_root, "app/package_api/foo/nested_query.rb"),
+        <<~RUBY
+          class Foo::NestedQuery
+            def execute!
+              Torikago::CurrentExecution.with_box(:bar) { :nested }
+              Torikago::CurrentExecution.current_box
+            end
+          end
+        RUBY
+      )
+      container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      result = Torikago::CurrentExecution.with_box(:caller) do
+        current = container.invoke("Foo::NestedQuery", :execute!, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+        [current, Torikago::CurrentExecution.current_box]
+      end
+
+      assert_equal [:foo, :caller], result
+      assert_nil Torikago::CurrentExecution.current_box
+    end
+  end
+
+  def test_invoke_fails_closed_when_ruby_box_creation_fails
+    with_module_root do |module_root|
+      old_ruby_box = ENV["RUBY_BOX"]
+      ENV["RUBY_BOX"] = "1"
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        box_factory: -> { raise "box creation failed" }
+      )
+
+      error = assert_raises(Torikago::BoxUnavailableError) do
+        container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      end
+
+      assert_equal "Ruby::Box is unavailable for module foo: box creation failed", error.message
+      assert_instance_of RuntimeError, error.cause
+      refute Object.const_defined?(:Foo, false)
+    ensure
+      restore_env("RUBY_BOX", old_ruby_box)
+    end
+  end
+
+  def test_invoke_wraps_box_runtime_preparation_failures
+    with_module_root do |module_root|
+      old_ruby_box = ENV["RUBY_BOX"]
+      ENV["RUBY_BOX"] = "1"
+      failing_box = Object.new
+      failing_box.define_singleton_method(:load_path) { raise "load path failed" }
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        box_factory: -> { failing_box }
+      )
+
+      error = assert_raises(Torikago::BoxUnavailableError) do
+        container.invoke("Foo::ListProductsQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      end
+
+      assert_match(/load path failed/, error.message)
+      assert_instance_of RuntimeError, error.cause
+      refute Object.const_defined?(:Foo, false)
+    ensure
+      restore_env("RUBY_BOX", old_ruby_box)
     end
   end
 
