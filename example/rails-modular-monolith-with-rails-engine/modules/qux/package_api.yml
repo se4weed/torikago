@@ -1,3 +1,5 @@
 exports:
   Qux::SafeBannerQuery:
+    methods:
+      - call
     allowed_callers: []

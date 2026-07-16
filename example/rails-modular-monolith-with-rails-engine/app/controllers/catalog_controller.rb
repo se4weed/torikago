@@ -66,7 +66,9 @@ class CatalogController < ApplicationController
 
   def products
     render json: {
-      data: Torikago::Gateway.call("Foo::ListProductsQuery")
+      data: Torikago::Gateway
+        .build("Foo::ListProductsQuery", page: 1)
+        .invoke(:execute!, per_page: 2)
     }
   end
 end

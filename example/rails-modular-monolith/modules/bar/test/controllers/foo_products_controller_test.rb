@@ -6,6 +6,6 @@ class Bar::FooProductsControllerTest < ActionDispatch::IntegrationTest
       get "/bar/foo-products"
     end
 
-    assert_equal "module dependency not allowed: bar -> foo#Foo::ListProductsQuery", error.message
+    assert_equal "module dependency not allowed: bar -> foo#Foo::ListProductsQuery#call", error.message
   end
 end

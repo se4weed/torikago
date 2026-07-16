@@ -2,7 +2,7 @@ require_relative "../../../../../test/test_helper"
 
 class Bar::GemVersionQueryTest < ActiveSupport::TestCase
   test "call reports bar-local gem versions" do
-    result = Torikago::Gateway.call("Bar::GemVersionQuery")
+    result = Torikago::Gateway.invoke("Bar::GemVersionQuery", :call)
 
     main_vs_module = result.fetch("main_vs_module")
     assert_equal "jwt", main_vs_module.fetch("gem")

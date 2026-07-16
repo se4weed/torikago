@@ -2,7 +2,7 @@ require_relative "../../../../../test/test_helper"
 
 class Bar::LookupAddressQueryTest < ActiveSupport::TestCase
   test "call returns the address from the bar postcode snapshot" do
-    result = Torikago::Gateway.call("Bar::LookupAddressQuery", "013-0310")
+    result = Torikago::Gateway.invoke("Bar::LookupAddressQuery", :call, "013-0310")
 
     assert_equal true, result.fetch("success")
     assert_equal "bar", result.fetch("module")

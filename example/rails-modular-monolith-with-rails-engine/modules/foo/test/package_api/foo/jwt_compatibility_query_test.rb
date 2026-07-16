@@ -2,7 +2,7 @@ require_relative "../../../../../test/test_helper"
 
 class Foo::JwtCompatibilityQueryTest < ActiveSupport::TestCase
   test "call reports JWT 2 compatibility checks" do
-    result = Torikago::Gateway.call("Foo::JwtCompatibilityQuery")
+    result = Torikago::Gateway.invoke("Foo::JwtCompatibilityQuery", :call)
 
     assert_equal "foo module", result.fetch("runtime")
     assert_equal "2.10.1", result.fetch("version")

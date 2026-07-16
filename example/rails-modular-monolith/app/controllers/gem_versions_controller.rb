@@ -8,8 +8,8 @@ class GemVersionsController < ApplicationController
     }
     @main_module_only_loaded = Object.const_defined?(:Jpostcode, false)
     @breaking_changes = breaking_changes
-    @foo_result = Torikago::Gateway.call("Foo::GemVersionQuery")
-    @bar_result = Torikago::Gateway.call("Bar::GemVersionQuery")
+    @foo_result = Torikago::Gateway.invoke("Foo::GemVersionQuery", :call)
+    @bar_result = Torikago::Gateway.invoke("Bar::GemVersionQuery", :call)
   end
 
   private

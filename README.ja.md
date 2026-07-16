@@ -2,7 +2,7 @@
 
 `torikago`は、Railsのmodular monolithでmoduleごとの実行境界を扱うためのgemです。`packwerk`や`Rails::Engine`で構造上の境界を作るだけでなく、`Ruby::Box`を使って実行時の境界も強くすることを目指しています。
 
-`torikago`では、module間の呼び出しを`Torikago::Gateway.call(...)`に集約し、各moduleのPackage APIと呼び出し可能なmoduleを事前に定義します。これによって、意図していないmodule間参照を実行時に防ぎやすくします。
+`torikago`では、module間の呼び出しを`Torikago::Gateway.invoke(...)`に集約し、各moduleが公開するPackage APIのclass・methodと呼び出し可能なmoduleを事前に定義します。これによって、意図していないmodule間参照を実行時に防ぎやすくします。
 
 ![torikago architecture](docs/image.png)
 
@@ -42,22 +42,35 @@ module側では、公開するPackage APIと、どのmoduleから呼べるかを
 ```yaml
 exports:
   Foo::ListProductsQuery:
+    methods:
+      - call
+      - execute!
     allowed_callers:
       - baz
 ```
 
 module自身からの呼び出しとmain boxからの呼び出しは許可されます。`allowed_callers`は、他moduleからの参照だけを制限します。
 
-呼び出し側では、対象のclass名を使って呼び出します。
+constructorに引数がない場合は、公開methodを直接指定します。
 
 ```ruby
-Torikago::Gateway.call("Foo::ListProductsQuery")
+Torikago::Gateway.invoke("Foo::ListProductsQuery", :call)
 
-# 引数を渡す場合
-Torikago::Gateway.call("Bar::SubmitOrderCommand", title: "Book")
+# method引数はmethod名より後ろへ渡す
+Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :execute!, title: "Book")
 ```
 
-`Torikago::Gateway.call(...)`は、class名から対象moduleを解決し、そのmoduleのexportされたPackage API定義を確認したうえで、対象Boxの中で`new.call(...)`を実行します。
+constructorに引数がある場合は`build`を使います。`build`の引数は`new`だけへ、`invoke`の引数は指定したpublic methodだけへ渡ります。
+
+```ruby
+Torikago::Gateway
+  .build("Foo::ListProductsQuery", page: 2)
+  .invoke(:execute!, per_page: 20)
+```
+
+対象Box内で`Foo::ListProductsQuery.new(page: 2).public_send(:execute!, per_page: 20)`を実行します。GatewayはBoxをbootする前にclass・method・callerを`package_api.yml`と照合します。private methodは呼べず、constructorや対象methodの例外は包まずそのまま伝播します。
+
+`Gateway.call`は削除されました。`Gateway.call("Foo::Query", value)`は`Gateway.invoke("Foo::Query", :call, value)`へ変更し、manifestへ`methods: [call]`を追加してください。`update-package-api`は既存の`methods`を保持し、新規発見したentryには`methods: []`を生成するため、公開methodを明示的に選ぶ必要があります。
 
 ## Example app
 
@@ -100,15 +113,17 @@ bundle exec ruby exe/torikago --help
 - `torikago init`
   - 対話式で`package_api.yml`と`config/initializers/torikago.rb`を生成する
 - `torikago check`
-  - `Gateway.call`とmanifestの整合性を検証する
+  - `Gateway.invoke`および`Gateway.build(...).invoke(...)`とmanifestの整合性を検証する
 - `torikago update-package-api [BOX]`
   - 設定済みentrypointから`package_api.yml`を更新する
 
-`torikago check`は、`Torikago::Gateway.call("...")`の呼び出しを走査し、
+`torikago check`は、`Ripper`で静的なGateway呼び出しを走査し、
 
 - manifestにそのclassが定義されているか
+- 呼び出すmethodが空でない`methods`配列に定義されているか
 - 呼び出し元moduleが`allowed_callers`に含まれているか
 - manifest上のclassに対応するファイルが存在するか
+- 静的に確認できる場合、公開したinstance methodが実装されているか
 
 を確認します。
 
@@ -137,7 +152,9 @@ bundle exec ruby exe/torikago --help
 - `Torikago::DependencyError`
   - 許可されていないmodule間参照
 - `Torikago::PublicApiError`
-  - manifestに宣言されていないPackage APIの呼び出し
+  - manifestに宣言されていないPackage API classまたはmethodの呼び出し
+- `Torikago::BoxUnavailableError`
+  - `RUBY_BOX=1`を指定したが対象Boxを生成・準備できなかった場合。main processへはfallbackしない
 - `Torikago::GemfileOverrideError`
   - Box用Gemfileの解決やactivateに失敗したとき
 

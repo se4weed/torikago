@@ -2,7 +2,7 @@
 
 `torikago` is a gem for introducing per-module runtime boundaries to Rails modular monoliths. It aims to strengthen runtime isolation with `Ruby::Box`, in addition to the structural boundaries you can already get from tools like `packwerk` and `Rails::Engine`.
 
-With `torikago`, module-to-module calls are funneled through `Torikago::Gateway.call(...)`, and each module declares which Package APIs it exposes and which modules may call them. This makes it easier to prevent unintended cross-module references at runtime.
+With `torikago`, module-to-module calls are funneled through `Torikago::Gateway.invoke(...)`, and each module declares which Package API classes and methods it exposes and which modules may call them. This makes it easier to prevent unintended cross-module references at runtime.
 
 ![torikago architecture](docs/image.png)
 
@@ -42,22 +42,35 @@ On the module side, declare the Package APIs you expose and which modules may ca
 ```yaml
 exports:
   Foo::ListProductsQuery:
+    methods:
+      - call
+      - execute!
     allowed_callers:
       - baz
 ```
 
 Calls from the module itself and from the main box are allowed implicitly. `allowed_callers` only restricts calls coming from other modules.
 
-Call a Package API by class name:
+For an argumentless constructor, invoke the exported public method directly:
 
 ```ruby
-Torikago::Gateway.call("Foo::ListProductsQuery")
+Torikago::Gateway.invoke("Foo::ListProductsQuery", :call)
 
-# with arguments
-Torikago::Gateway.call("Bar::SubmitOrderCommand", title: "Book")
+# arguments after the method name go to that method
+Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :execute!, title: "Book")
 ```
 
-`Torikago::Gateway.call(...)` resolves the target module from the class name, checks the exported Package API declaration for that module, and then runs `new.call(...)` inside the target Box.
+Use `build` when the constructor takes arguments. `build` arguments go only to `new`; `invoke` arguments go only to the selected public method:
+
+```ruby
+Torikago::Gateway
+  .build("Foo::ListProductsQuery", page: 2)
+  .invoke(:execute!, per_page: 20)
+```
+
+This runs `Foo::ListProductsQuery.new(page: 2).public_send(:execute!, per_page: 20)` entirely inside the target Box. Before booting that Box, Gateway checks the class, method, and caller against `package_api.yml`. Private methods cannot be invoked and target constructor/method exceptions are propagated unchanged.
+
+`Gateway.call` has been removed. Migrate `Gateway.call("Foo::Query", value)` to `Gateway.invoke("Foo::Query", :call, value)`, and add `methods: [call]` to its manifest entry. `update-package-api` preserves existing `methods`; newly discovered entries use `methods: []` so the public surface must be chosen explicitly.
 
 ## Example app
 
@@ -100,15 +113,17 @@ Main commands:
 - `torikago init`
   - interactively generate `package_api.yml` files and `config/initializers/torikago.rb`
 - `torikago check`
-  - validate `Gateway.call` usage against manifests
+  - validate `Gateway.invoke` and `Gateway.build(...).invoke(...)` usage against manifests
 - `torikago update-package-api [BOX]`
   - regenerate `package_api.yml` from the configured entrypoint
 
-`torikago check` scans `Torikago::Gateway.call("...")` usage and verifies:
+`torikago check` uses `Ripper` to scan static Gateway invocations and verifies:
 
 - the class is declared in a manifest
+- the invoked method is listed in the non-empty `methods` array
 - the caller module is included in `allowed_callers`
 - the manifest entry has a matching implementation file
+- the exported public instance method is defined when it can be checked statically
 
 ## About `RUBY_BOX=1` and boot
 
@@ -135,7 +150,9 @@ Common errors:
 - `Torikago::DependencyError`
   - an unauthorized cross-module reference
 - `Torikago::PublicApiError`
-  - calling a Package API that is not declared in the manifest
+  - calling a Package API class or method that is not declared in the manifest
+- `Torikago::BoxUnavailableError`
+  - `RUBY_BOX=1` was requested but the target Box could not be created or prepared; Torikago does not fall back to the main process
 - `Torikago::GemfileOverrideError`
   - failure while resolving or activating a Box-specific Gemfile override
 
