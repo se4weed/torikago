@@ -22,8 +22,12 @@ It demonstrates a Rails-first modular monolith where:
 `Ruby::Box` must be enabled when running this example.
 
 ```sh
+bin/install-module-dependencies
 RUBY_BOX=1 bundle exec rails s
 ```
+
+`bin/install-module-dependencies` loads the Torikago configuration and runs
+`bundle install` for every registered module that declares a `gemfile`.
 
 ## Testing
 
