@@ -19,20 +19,17 @@ module Torikago
       @gem_activator = gem_activator || method(:activate_gem_dependency)
     end
 
-    def call(public_api_class_name, *args, **kwargs)
-      call_with_current_execution(public_api_class_name, *args, **kwargs)
+    def invoke(public_api_class_name, method_name, constructor_args:, constructor_kwargs:, method_args:, method_kwargs:)
+      CurrentExecution.with_box(name) do
+        public_api_class = resolve_public_api_class(public_api_class_name)
+        instance = public_api_class.new(*constructor_args, **constructor_kwargs)
+        instance.public_send(method_name, *method_args, **method_kwargs)
+      end
     end
 
     private
 
     attr_reader :box_factory, :entrypoint, :gem_activator, :gemfile, :gemfile_dependency_loader, :module_root, :name, :setup
-
-    def call_with_current_execution(public_api_class_name, *args, **kwargs)
-      CurrentExecution.with_box(name) do
-        public_api_class = resolve_public_api_class(public_api_class_name)
-        public_api_class.new.call(*args, **kwargs)
-      end
-    end
 
     def boot_runtime!
       return if @booted
@@ -43,13 +40,15 @@ module Torikago
         without_bundler_setup_env do
           # The Box starts with an independent load path and constant table, so
           # boot has to copy enough host context before loading module code.
-          prepare_box!
-          prepend_gemfile_require_paths_to_box!
-          load_setup_hook_into_box!
-          ensure_root_namespace_in_box!
+          with_box_runtime_errors do
+            prepare_box!
+            prepend_gemfile_require_paths_to_box!
+            load_setup_hook_into_box!
+            ensure_root_namespace_in_box!
 
-          files.each do |path|
-            box.load(path)
+            files.each do |path|
+              box.load(path)
+            end
           end
         end
       else
@@ -172,6 +171,22 @@ module Torikago
                else
                  without_bundler_setup_env { Ruby::Box.new }
                end
+    rescue BoxUnavailableError
+      raise
+    rescue StandardError => e
+      raise unless ENV["RUBY_BOX"] == "1"
+
+      raise BoxUnavailableError, "Ruby::Box is unavailable for module #{name}: #{e.message}"
+    end
+
+    def with_box_runtime_errors
+      yield
+    rescue BoxUnavailableError
+      raise
+    rescue StandardError => e
+      raise unless ENV["RUBY_BOX"] == "1"
+
+      raise BoxUnavailableError, "Ruby::Box is unavailable for module #{name}: #{e.message}"
     end
 
     def prepare_box!
@@ -223,18 +238,7 @@ module Torikago
     end
 
     def ruby_box_runtime_available?
-      return @ruby_box_runtime_available unless @ruby_box_runtime_available.nil?
-
-      @ruby_box_runtime_available = if ENV["RUBY_BOX"] == "1"
-                                      begin
-                                        without_bundler_setup_env { Ruby::Box.new }
-                                        true
-                                      rescue RuntimeError
-                                        false
-                                      end
-                                    else
-                                      false
-                                    end
+      ENV["RUBY_BOX"] == "1"
     end
 
     def camelize(segment)
