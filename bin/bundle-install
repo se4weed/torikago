@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+root = ARGV.fetch(0) do
+  warn "usage: bin/bundle-install APP_ROOT"
+  exit 1
+end
+
+app_root = File.expand_path(root, Dir.pwd)
+gemfiles = [File.join(app_root, "Gemfile")] + Dir[File.join(app_root, "modules", "*", "Gemfile")].sort
+
+gemfiles.each do |gemfile|
+  directory = File.dirname(gemfile)
+
+  puts "==> bundle install in #{directory}"
+  Dir.chdir(directory) do
+    system("bundle", "install") || exit($?&.exitstatus || 1)
+  end
+end
