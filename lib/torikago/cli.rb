@@ -13,7 +13,7 @@ module Torikago
         init
             interactively generate package_api.yml files and config/initializers/torikago.rb
         check
-            validate Gateway.call usage against package_api.yml
+            validate Gateway invocations against package_api.yml
         update-package-api [BOX]
             regenerate package_api.yml entries from the configured public API entrypoint
         help, --help, -h
@@ -102,7 +102,7 @@ module Torikago
       if result.ok?
         stdout.puts(
           "ok: scanned #{result.scanned_file_count} Ruby files, " \
-          "found #{result.gateway_call_count} Gateway.call usages, " \
+          "found #{result.gateway_call_count} static Gateway invocations, " \
           "validated #{result.manifest_count} package_api manifests"
         )
         0
@@ -110,7 +110,7 @@ module Torikago
         result.errors.each { |error| stderr.puts(error) }
         stderr.puts(
           "failed: scanned #{result.scanned_file_count} Ruby files, " \
-          "found #{result.gateway_call_count} Gateway.call usages, " \
+          "found #{result.gateway_call_count} static Gateway invocations, " \
           "validated #{result.manifest_count} package_api manifests, " \
           "#{result.errors.size} errors"
         )
@@ -166,7 +166,7 @@ module Torikago
         "# This file registers torikago runtime boundaries for your Rails app.",
         "#",
         "# Each config.register call defines one module root. Calls between modules",
-        "# should go through Torikago::Gateway.call(\"Module::ExportedApi\") instead",
+        "# should go through Torikago::Gateway.invoke(\"Module::ExportedApi\", :call) instead",
         "# of reaching across module constants directly.",
         "#",
         "# Options:",
@@ -197,7 +197,7 @@ module Torikago
         "#",
         "#   bin/torikago update-package-api",
         "#",
-        "# To validate Gateway.call usage against package_api.yml, run:",
+        "# To validate Gateway invocations against package_api.yml, run:",
         "#",
         "#   bin/torikago check",
         "",
@@ -232,8 +232,9 @@ module Torikago
         #
         # Each key under exports is a class that may be called through:
         #
-        #   Torikago::Gateway.call("ModuleName::SomeQuery")
+        #   Torikago::Gateway.invoke("ModuleName::SomeQuery", :call)
         #
+        # methods lists the public instance methods exposed through Gateway.
         # allowed_callers lists other modules that may call that export. The
         # host app and the module itself are allowed implicitly.
         #

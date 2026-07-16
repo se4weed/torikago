@@ -45,10 +45,20 @@ module Torikago
   end
 
   class Gateway
-    def self.call: (String public_api_class_name, *untyped, **untyped) -> untyped
+    def self.build: (String public_api_class_name, *untyped, **untyped) -> Invocation
+    def self.invoke: (String public_api_class_name, Symbol | String method_name, *untyped, **untyped) -> untyped
 
     def initialize: (registry: Registry, configuration: Configuration, ?manifest_loader: untyped) -> void
-    def call: (String public_api_class_name, *untyped, **untyped) -> untyped
+    def build: (String public_api_class_name, *untyped, **untyped) -> Invocation
+    def invoke: (String public_api_class_name, Symbol | String method_name, *untyped, **untyped) -> untyped
+    def dispatch: (
+      public_api_class_name: String,
+      method_name: Symbol | String,
+      constructor_args: Array[untyped],
+      constructor_kwargs: Hash[Symbol, untyped],
+      method_args: Array[untyped],
+      method_kwargs: Hash[Symbol, untyped]
+    ) -> untyped
 
     private
 
@@ -57,13 +67,31 @@ module Torikago
     attr_reader manifests: Hash[Symbol, Hash[String, untyped]]
     attr_reader registry: Registry
 
-    def validate_public_api!: (Symbol target_module, String public_api_class_name, Symbol? caller_module) -> nil
+    def validate_public_api!: (Symbol target_module, String public_api_class_name, Symbol | String method_name, Symbol? caller_module) -> nil
     def load_manifest: (Configuration::Definition definition) -> Hash[String, untyped]
     def package_api_manifest_path: (Configuration::Definition definition) -> Pathname
     def infer_target_module: (String public_api_class_name) -> Symbol
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
     def dependency_allowed?: (untyped public_api_entry, Symbol caller_name) -> bool
+    def exported_methods: (untyped public_api_entry) -> Array[String]
     def allowed_callers: (untyped public_api_entry) -> Array[untyped]
+  end
+
+  class Invocation
+    def initialize: (
+      gateway: Gateway,
+      public_api_class_name: String,
+      constructor_args: Array[untyped],
+      constructor_kwargs: Hash[Symbol, untyped]
+    ) -> void
+    def invoke: (Symbol | String method_name, *untyped, **untyped) -> untyped
+
+    private
+
+    attr_reader constructor_args: Array[untyped]
+    attr_reader constructor_kwargs: Hash[Symbol, untyped]
+    attr_reader gateway: Gateway
+    attr_reader public_api_class_name: String
   end
 
   class Registry
@@ -90,7 +118,14 @@ module Torikago
       ?gem_activator: untyped
     ) -> void
 
-    def call: (String public_api_class_name, *untyped, **untyped) -> untyped
+    def invoke: (
+      String public_api_class_name,
+      Symbol | String method_name,
+      constructor_args: Array[untyped],
+      constructor_kwargs: Hash[Symbol, untyped],
+      method_args: Array[untyped],
+      method_kwargs: Hash[Symbol, untyped]
+    ) -> untyped
 
     private
 
@@ -103,7 +138,6 @@ module Torikago
     attr_reader name: Symbol | String
     attr_reader setup: String?
 
-    def call_with_current_execution: (String public_api_class_name, *untyped, **untyped) -> untyped
     def boot_runtime!: () -> untyped
     def load_setup_hook!: () -> untyped
     def apply_gemfile_overrides!: () -> untyped
@@ -118,6 +152,7 @@ module Torikago
     def ensure_root_namespace_in_box!: () -> untyped
     def isolated_box_enabled?: () -> bool
     def box: () -> untyped
+    def with_box_runtime_errors: [A] () { () -> A } -> A
     def prepare_box!: () -> untyped
     def gateway_model_files: () -> Array[String]
     def rails_model_file?: (String path) -> bool
@@ -142,13 +177,42 @@ module Torikago
       attr_accessor errors: Array[String]
       attr_accessor scanned_file_count: Integer
       attr_accessor gateway_call_count: Integer
+      attr_accessor dynamic_gateway_call_count: Integer
       attr_accessor manifest_count: Integer
 
-      def initialize: (?errors: Array[String], ?scanned_file_count: Integer, ?gateway_call_count: Integer, ?manifest_count: Integer) -> void
+      def initialize: (?errors: Array[String], ?scanned_file_count: Integer, ?gateway_call_count: Integer, ?dynamic_gateway_call_count: Integer, ?manifest_count: Integer) -> void
       def ok?: () -> bool
     end
 
-    CALL_PATTERN: Regexp
+    class GatewayCall
+      attr_accessor class_name: String
+      attr_accessor method_name: Symbol
+
+      def initialize: (class_name: String, method_name: Symbol) -> void
+    end
+
+    class GatewayCallExtractor
+      attr_reader calls: Array[GatewayCall]
+      attr_reader dynamic_call_count: Integer
+
+      def initialize: (String source) -> void
+      def call: () -> GatewayCallExtractor
+
+      private
+
+      attr_reader sexp: untyped
+
+      def walk: (untyped node) -> void
+      def extract: (untyped node) -> void
+      def record: (String? class_name, Symbol? method_name) -> untyped
+      def build_call?: (untyped node) -> bool
+      def gateway_constant?: (untyped node) -> bool
+      def constant_name: (untyped node) -> String?
+      def arguments_from: (untyped node) -> Array[untyped]
+      def string_literal: (untyped node) -> String?
+      def symbol_literal: (untyped node) -> Symbol?
+      def token_value: (untyped token) -> String?
+    end
 
     def initialize: (configuration: Configuration, source_roots: untyped) -> void
     def call: () -> Result
@@ -161,7 +225,7 @@ module Torikago
     attr_reader source_roots: Array[Pathname]
 
     def source_files: () -> Array[String]
-    def scan_gateway_calls: (String path, Array[String] errors) -> Integer
+    def scan_gateway_calls: (String path, Array[String] errors) -> [Integer, Integer]
     def validate_manifest_entries: (Configuration::Definition definition, Array[String] errors) -> untyped
     def public_api_entry_for: (Symbol box_name, String class_name) -> untyped
     def load_manifest: (Configuration::Definition definition) -> Hash[String, untyped]
@@ -170,6 +234,13 @@ module Torikago
     def infer_caller_box_from_path: (String path) -> Symbol?
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
     def allowed_callers: (untyped manifest_entry) -> Array[untyped]
+    def exported_methods: (untyped manifest_entry) -> Array[String]
+    def public_instance_methods: (Pathname path, String class_name) -> [Array[String], bool]
+    def class_body_methods: (untyped body) -> { methods: Array[String], dynamic: bool }
+    def bare_call_name: (untyped node) -> String?
+    def contains_call?: (untyped node, String method_name) -> bool
+    def qualified_constant_name: (untyped node, String? namespace) -> String?
+    def constant_name: (untyped node) -> String?
     def underscore: (String name) -> String
     def public_api_root: (Configuration::Definition definition) -> Pathname
   end
@@ -187,6 +258,7 @@ module Torikago
     def build_manifest: (Configuration::Definition definition, Hash[String, untyped] existing_manifest) -> Hash[String, untyped]
     def exported_package_apis: (Hash[String, untyped] manifest) -> Hash[String, untyped]
     def allowed_callers: (untyped manifest_entry) -> Array[untyped]
+    def exported_methods: (untyped manifest_entry) -> Array[String]
     def render_manifest: (Hash[String, untyped] manifest) -> String
     def discover_public_api_classes: (Configuration::Definition definition) -> Array[String]
     def public_api_root: (Configuration::Definition definition) -> Pathname

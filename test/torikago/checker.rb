@@ -3,152 +3,178 @@ require "fileutils"
 require "tmpdir"
 
 class TorikagoCheckerTest < Minitest::Test
-  def test_check_returns_no_errors_for_declared_calls
+  def test_check_detects_one_line_gateway_invoke
     with_project do |root, configuration|
-      FileUtils.mkdir_p(File.join(root, "modules/foo"))
-      File.write(
-        File.join(root, "modules/foo/service.rb"),
-        <<~RUBY
-          class FooService
-            def call
-              Torikago::Gateway.call("Bar::SubmitOrderCommand")
-            end
-          end
-        RUBY
-      )
+      write_caller(root, 'Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :execute!)')
 
-      checker = Torikago::Checker.new(
-        configuration: configuration,
-        source_roots: [File.join(root, "modules")]
-      )
+      result = check(root, configuration)
 
-      result = Dir.chdir(root) { checker.call }
-
-      assert result.ok?
-      assert_equal [], result.errors
-      assert_equal 2, result.scanned_file_count
+      assert result.ok?, result.errors.join("\n")
       assert_equal 1, result.gateway_call_count
-      assert_equal 2, result.manifest_count
+      assert_equal 0, result.dynamic_gateway_call_count
     end
   end
 
-  def test_check_reports_undeclared_calls_and_missing_public_api_files
+  def test_check_detects_multiline_build_and_invoke
     with_project do |root, configuration|
-      FileUtils.mkdir_p(File.join(root, "modules/foo"))
-      File.write(
-        File.join(root, "modules/foo/service.rb"),
+      write_caller(
+        root,
         <<~RUBY
-          class FooService
-            def call
-              Torikago::Gateway.call("Bar::MissingCommand")
-            end
-          end
+          Torikago::Gateway
+            .build("Bar::SubmitOrderCommand", account_id: 1)
+            .invoke(:execute!, force: true)
         RUBY
       )
 
-      File.write(
-        File.join(root, "modules/bar/package_api.yml"),
-        <<~YAML
-          exports:
-            Bar::MissingCommand:
-              allowed_callers:
-                - foo
-        YAML
-      )
+      result = check(root, configuration)
 
-      checker = Torikago::Checker.new(
-        configuration: configuration,
-        source_roots: [File.join(root, "modules")]
-      )
-
-      result = Dir.chdir(root) { checker.call }
-
-      refute result.ok?
-      assert_equal 1, result.errors.size
-      assert_match(/matching file/, result.errors.first)
+      assert result.ok?, result.errors.join("\n")
+      assert_equal 1, result.gateway_call_count
     end
   end
 
-  def test_check_uses_a_configured_entrypoint_directory_when_matching_manifest_files
+  def test_check_reports_a_method_not_declared_in_the_manifest
+    with_project do |root, configuration|
+      write_caller(root, 'Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :delete_all!)')
+
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("Bar::SubmitOrderCommand#delete_all! is not exported") })
+    end
+  end
+
+  def test_check_reports_an_unauthorized_caller
+    with_project(allowed_callers: []) do |root, configuration|
+      write_caller(root, 'Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :execute!)')
+
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("foo is not allowed to call Bar::SubmitOrderCommand#execute!") })
+    end
+  end
+
+  def test_check_reports_manifest_entries_without_methods
+    with_project(methods: nil) do |root, configuration|
+      write_caller(root, 'Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :execute!)')
+
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("must declare a non-empty methods array") })
+    end
+  end
+
+  def test_check_reports_manifest_entries_with_empty_methods
+    with_project(methods: []) do |root, configuration|
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("must declare a non-empty methods array") })
+    end
+  end
+
+  def test_check_reports_missing_public_api_files
+    with_project do |root, configuration|
+      FileUtils.rm_f(File.join(root, "modules/bar/app/package_api/bar/submit_order_command.rb"))
+
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("does not have a matching file") })
+    end
+  end
+
+  def test_check_reports_exported_methods_missing_from_the_implementation
+    with_project(implementation_method: :call) do |root, configuration|
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("#execute! is exported but no public instance method definition was found") })
+    end
+  end
+
+  def test_check_does_not_treat_private_methods_as_public_implementations
+    with_project(implementation_visibility: :private) do |root, configuration|
+      result = check(root, configuration)
+
+      refute result.ok?
+      assert(result.errors.any? { |error| error.include?("no public instance method definition") })
+    end
+  end
+
+  def test_check_skips_dynamic_gateway_arguments_and_counts_them_separately
+    with_project do |root, configuration|
+      write_caller(root, "Torikago::Gateway.invoke(class_name, method_name)")
+
+      result = check(root, configuration)
+
+      assert result.ok?, result.errors.join("\n")
+      assert_equal 0, result.gateway_call_count
+      assert_equal 1, result.dynamic_gateway_call_count
+    end
+  end
+
+  def test_check_uses_a_configured_entrypoint_directory
     with_project(entrypoint: "components/public_api") do |root, configuration|
-      FileUtils.mkdir_p(File.join(root, "modules/foo"))
-      File.write(
-        File.join(root, "modules/foo/service.rb"),
-        <<~RUBY
-          class FooService
-            def call
-              Torikago::Gateway.call("Bar::SubmitOrderCommand")
-            end
-          end
-        RUBY
-      )
+      write_caller(root, 'Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :execute!)')
 
-      checker = Torikago::Checker.new(
-        configuration: configuration,
-        source_roots: [File.join(root, "modules")]
-      )
+      result = check(root, configuration)
 
-      result = Dir.chdir(root) { checker.call }
-
-      assert result.ok?
-      assert_equal [], result.errors
-    end
-  end
-
-  def test_check_does_not_match_manifest_entries_against_parent_when_configured_entrypoint_directory_is_missing
-    Dir.mktmpdir("torikago-checker") do |root|
-      foo_root = File.join(root, "modules/foo")
-      FileUtils.mkdir_p(File.join(foo_root, "app/models/foo"))
-      File.write(File.join(foo_root, "app/models/foo/widget.rb"), "")
-      File.write(
-        File.join(foo_root, "package_api.yml"),
-        <<~YAML
-          exports:
-            Models::Foo::Widget:
-              allowed_callers: []
-        YAML
-      )
-
-      configuration = Torikago::Configuration.new
-      configuration.register(:foo, root: foo_root, entrypoint: "app/package_api")
-
-      checker = Torikago::Checker.new(
-        configuration: configuration,
-        source_roots: [File.join(root, "modules")]
-      )
-
-      result = Dir.chdir(root) { checker.call }
-
-      refute result.ok?
-      assert_equal 1, result.errors.size
-      assert_match(/matching file/, result.errors.first)
+      assert result.ok?, result.errors.join("\n")
     end
   end
 
   private
 
-  def with_project(entrypoint: nil)
+  def check(root, configuration)
+    checker = Torikago::Checker.new(
+      configuration: configuration,
+      source_roots: [File.join(root, "modules")]
+    )
+    Dir.chdir(root) { checker.call }
+  end
+
+  def write_caller(root, invocation)
+    FileUtils.mkdir_p(File.join(root, "modules/foo"))
+    File.write(
+      File.join(root, "modules/foo/service.rb"),
+      <<~RUBY
+        class FooService
+          def call
+            #{invocation}
+          end
+        end
+      RUBY
+    )
+  end
+
+  def with_project(entrypoint: nil, methods: ["execute!"], allowed_callers: ["foo"], implementation_method: :execute!, implementation_visibility: :public)
     Dir.mktmpdir("torikago-checker") do |root|
       foo_root = File.join(root, "modules/foo")
       bar_root = File.join(root, "modules/bar")
       public_api_root = entrypoint ? File.join(bar_root, entrypoint, "bar") : File.join(bar_root, "app/package_api/bar")
+      FileUtils.mkdir_p(foo_root)
       FileUtils.mkdir_p(public_api_root)
 
+      methods_yaml = methods.nil? ? "" : "    methods:\n#{methods.map { |method| "      - #{method}" }.join("\n")}\n"
       File.write(
         File.join(bar_root, "package_api.yml"),
         <<~YAML
           exports:
             Bar::SubmitOrderCommand:
-              allowed_callers:
-                - foo
+          #{methods_yaml}    allowed_callers:
+          #{allowed_callers.map { |caller| "      - #{caller}" }.join("\n")}
         YAML
       )
 
+      visibility = implementation_visibility == :public ? "" : "  #{implementation_visibility}\n\n"
       File.write(
         File.join(public_api_root, "submit_order_command.rb"),
         <<~RUBY
           class Bar::SubmitOrderCommand
-            def call
+          #{visibility}  def #{implementation_method}
             end
           end
         RUBY

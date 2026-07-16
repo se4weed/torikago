@@ -55,8 +55,8 @@ class TorikagoCliTest < Minitest::Test
       bar_manifest = YAML.safe_load(File.read(File.join(root, "modules/bar/package_api.yml")))
       initializer = File.read(File.join(root, "config/initializers/torikago.rb"))
 
-      assert_equal({ "allowed_callers" => [] }, foo_manifest.dig("exports", "Foo::ListProductsQuery"))
-      assert_equal({ "allowed_callers" => [] }, bar_manifest.dig("exports", "Bar::SubmitOrderCommand"))
+      assert_equal({ "methods" => [], "allowed_callers" => [] }, foo_manifest.dig("exports", "Foo::ListProductsQuery"))
+      assert_equal({ "methods" => [], "allowed_callers" => [] }, bar_manifest.dig("exports", "Bar::SubmitOrderCommand"))
       assert_match(/root: Rails\.root\.join\("modules\/bar"\)/, initializer)
       assert_match(/entrypoint: "components\/public_api"/, initializer)
       assert_match(/root: Rails\.root\.join\("modules\/foo"\)/, initializer)
@@ -90,7 +90,7 @@ class TorikagoCliTest < Minitest::Test
 
       assert_equal 0, exit_code
       assert_match(/scanned 2 Ruby files/, stdout.string)
-      assert_match(/found 1 Gateway\.call usages/, stdout.string)
+      assert_match(/found 1 static Gateway invocations/, stdout.string)
       assert_match(/validated 2 package_api manifests/, stdout.string)
       assert_equal "", stderr.string
     end
@@ -124,7 +124,7 @@ class TorikagoCliTest < Minitest::Test
         <<~RUBY
           class FooService
             def call
-              Torikago::Gateway.call("Bar::SubmitOrderCommand")
+              Torikago::Gateway.invoke("Bar::SubmitOrderCommand", :call)
             end
           end
         RUBY
@@ -135,6 +135,8 @@ class TorikagoCliTest < Minitest::Test
         <<~YAML
           exports:
             Bar::SubmitOrderCommand:
+              methods:
+                - call
               allowed_callers:
                 - foo
         YAML
