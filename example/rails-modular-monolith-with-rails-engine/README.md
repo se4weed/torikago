@@ -8,7 +8,7 @@ It demonstrates a Rails-first modular monolith where:
 - each module declares its public classes, methods, and callers in `package_api.yml`
 - a module can run setup code before its public API is loaded
 - a module can run its engine routes, controllers, models, and Package APIs in the same Box
-- another module can skip `Rails::Engine` and use host app routes while still using a Torikago Box
+- another module can skip `Rails::Engine`, use a host app route, and still run its controller in a Torikago Box
 
 ## Layout
 
@@ -23,8 +23,11 @@ It demonstrates a Rails-first modular monolith where:
 - `modules/{foo,bar,baz}/config/routes.rb`
   - defines module-local HTTP routes mounted by the host app
 - `modules/qux`
-  - plain module without a `Rails::Engine`, routed by the host app while using
-    Torikago's default Box loading rules
+  - plain module without a `Rails::Engine`
+  - the host route uses `Torikago.action(...)`, so its controller is resolved and
+    executed inside the Qux Box instead of being autoloaded in the main Box
+  - `ShowcaseController` is a top-level constant; module ownership comes from
+    the registered `:qux` root rather than a matching Ruby namespace
 
 ## Compared With The Non-Engine Example
 
@@ -32,7 +35,8 @@ This app defines `Foo::Engine`, `Bar::Engine`, and `Baz::Engine` inside their
 module Boxes. The host app mounts `Torikago::RackEndpoint` instances from
 `config/routes.rb`, so it never resolves those engine or controller constants.
 It also registers `qux` without `rails_engine: true` to show that Rails::Engine
-and non-Engine modules can coexist.
+and non-Engine modules can coexist while keeping both Package APIs and
+controllers in their module Box.
 
 See `../rails-modular-monolith` for the same app organized without
 `Rails::Engine`, using host app routes and host app module autoload paths.

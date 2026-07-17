@@ -10,6 +10,7 @@ class TorikagoEngineContainerTest < Minitest::Test
     Object.send(:remove_const, :SharedDependency) if Object.const_defined?(:SharedDependency, false)
     Object.send(:remove_const, :SetupProbe) if Object.const_defined?(:SetupProbe, false)
     Object.send(:remove_const, :VersionedFormatter) if Object.const_defined?(:VersionedFormatter, false)
+    Object.send(:remove_const, :WidgetsController) if Object.const_defined?(:WidgetsController, false)
   end
 
   def test_invoke_loads_the_public_api_class_and_executes_call
@@ -231,10 +232,10 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_call_loads_and_dispatches_to_a_rails_runtime_controller
+  def test_call_loads_and_dispatches_to_a_top_level_rails_runtime_controller
     Dir.mktmpdir("torikago-engine-container") do |module_root|
       FileUtils.mkdir_p(File.join(module_root, "lib"))
-      FileUtils.mkdir_p(File.join(module_root, "app/controllers/foo"))
+      FileUtils.mkdir_p(File.join(module_root, "app/controllers"))
       FileUtils.mkdir_p(File.join(module_root, "config"))
       File.write(
         File.join(module_root, "lib/foo.rb"),
@@ -245,7 +246,7 @@ class TorikagoEngineContainerTest < Minitest::Test
                 raise "unexpected path" unless path == "/widgets/7"
                 raise "unexpected method" unless method == :get
 
-                { "controller" => "foo/widgets", "action" => "show", "id" => "7" }
+                { "controller" => "widgets", "action" => "show", "id" => "7" }
               end
             end
 
@@ -258,9 +259,9 @@ class TorikagoEngineContainerTest < Minitest::Test
         RUBY
       )
       File.write(
-        File.join(module_root, "app/controllers/foo/widgets_controller.rb"),
+        File.join(module_root, "app/controllers/widgets_controller.rb"),
         <<~RUBY
-          class Foo::WidgetsController
+          class WidgetsController
             def self.action(action_name)
               lambda do |env|
                 params = env.fetch("action_dispatch.request.path_parameters")
@@ -283,6 +284,62 @@ class TorikagoEngineContainerTest < Minitest::Test
       )
 
       response = container.call("PATH_INFO" => "/widgets/7", "REQUEST_METHOD" => "GET")
+
+      assert_equal [200, { "content-type" => "text/plain" }, ["show:7:foo"]], response
+      assert_nil Torikago::CurrentExecution.current_box
+    end
+  end
+
+  def test_dispatch_controller_loads_a_top_level_controller_without_a_rails_engine
+    with_module_root do |module_root|
+      controller_dir = File.join(module_root, "app/controllers")
+      FileUtils.mkdir_p(controller_dir)
+      File.write(
+        File.join(controller_dir, "widgets_controller.rb"),
+        <<~RUBY
+          class WidgetsController
+            def self.action(action_name)
+              lambda do |env|
+                params = env.fetch("action_dispatch.request.path_parameters")
+                [
+                  200,
+                  { "content-type" => "text/plain" },
+                  ["\#{action_name}:\#{params.fetch(:id)}:\#{Torikago::CurrentExecution.current_box}"]
+                ]
+              end
+            end
+          end
+        RUBY
+      )
+
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        box_factory: -> { FakeBox.new }
+      )
+
+      # A prior Package API invocation must not prevent the later controller
+      # runtime from loading.
+      assert_equal(
+        ["coffee-beans", "drip-bag"],
+        container.invoke(
+          "Foo::ListProductsQuery",
+          :call,
+          constructor_args: [],
+          constructor_kwargs: {},
+          method_args: [],
+          method_kwargs: {}
+        )
+      )
+
+      response = container.dispatch_controller(
+        {
+          "PATH_INFO" => "/widgets/7",
+          "action_dispatch.request.path_parameters" => { id: "7" }
+        },
+        controller_name: "WidgetsController",
+        action_name: :show
+      )
 
       assert_equal [200, { "content-type" => "text/plain" }, ["show:7:foo"]], response
       assert_nil Torikago::CurrentExecution.current_box

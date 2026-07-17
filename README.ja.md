@@ -31,8 +31,9 @@ end
   - public APIを探索するディレクトリ、またはその配下のファイル
   - 未指定時は`app/package_api`
 - `rails_engine`
-  - moduleのengine entrypoint、routes、Controller、Model、helper、Package APIを同じBoxへ読み込む
+  - moduleが所有するRails::Engineのroute setを有効にし、Rails runtimeを同じBoxへ読み込む
   - host routerでは`Foo::Engine`ではなく`Torikago::RackEndpoint.new(:foo)`をmountする
+  - host routeから`Torikago.action(...)`でControllerを呼ぶ場合は不要
 - `setup`
   - Box boot前に読み込むsetup hook
   - monkey patchやbox固有の初期化処理に使う
@@ -86,6 +87,32 @@ mount Torikago::RackEndpoint.new(:foo) => "/"
 ```
 
 endpointは現在のlazy bootを維持します。最初のHTTP requestまたはGateway呼び出しでmodule Boxを生成し、以降は同じBoxを再利用します。
+この橋渡しにはRack互換のroute endpointを使います。process全体へRack middlewareを
+追加する仕組みではありません。
+
+Controllerの隔離にRails::Engineは必須ではありません。host側のrouteから、
+torikagoがmodule Box内だけで解決するControllerへdispatchできます。
+
+```ruby
+# config/initializers/torikago.rb
+Torikago.configure do |config|
+  config.register(:qux, root: Rails.root.join("modules/qux"))
+end
+
+# config/routes.rb（host application）
+get "/qux/showcase" => Torikago.action(
+  :qux,
+  "ShowcaseController",
+  :show
+)
+```
+
+Controllerの所有moduleは、`config/initializers/torikago.rb`へ登録したmodule名と
+rootで決まります。Controller定数をmoduleと同じnamespaceへ入れる必要はなく、
+このhost route方式のために追加の`config.register` optionは必要ありません。
+たとえばtop-levelの`ShowcaseController`から`Qux::ApplicationController`を継承
+できます。Controller、Model、helper、view、Package APIをhost applicationのautoload
+pathへ追加する必要はありません。
 
 ## 使い方
 

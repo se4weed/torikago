@@ -49,9 +49,26 @@ module Torikago
         boot_runtime!
         route = recognize_route(env)
         controller = resolve_runtime_class("#{camelize_controller(route.fetch(:controller))}Controller")
-        request_env = env.merge("action_dispatch.request.path_parameters" => route)
 
-        controller.action(route.fetch(:action)).call(request_env)
+        dispatch_controller_action(env, controller, route.fetch(:action), route)
+      end
+    end
+
+    # Dispatches a host-owned route to a controller that belongs to this module.
+    # Unlike #call, route recognition has already happened in the host router, so
+    # this path does not require a Rails::Engine inside the module.
+    def dispatch_controller(env, controller_name:, action_name:)
+      CurrentExecution.with_box(name) do
+        boot_controller_runtime!
+        controller = resolve_runtime_class(controller_name)
+
+        dispatch_controller_action(
+          env,
+          controller,
+          action_name,
+          controller: controller_name,
+          action: action_name.to_s
+        )
       end
     end
 
@@ -100,9 +117,53 @@ module Torikago
       @booted = true
     end
 
-    def attach_rails_helpers!
-      return unless rails_engine?
+    def boot_controller_runtime!
+      boot_runtime!
+      return if rails_engine?
+      return if @controller_runtime_booted
 
+      files = controller_runtime_files - runtime_files
+      if isolated_box_enabled?
+        without_bundler_setup_env do
+          with_box_runtime_errors do
+            install_rails_runtime_support!
+            prepare_rails_application_controller_in_box!
+            load_runtime_files_into_box!(files)
+            attach_rails_helpers!
+          end
+        end
+      else
+        files.each do |path|
+          load path
+          normalize_rails_constant_name!(path)
+        end
+        attach_rails_helpers!
+      end
+
+      @controller_runtime_booted = true
+    end
+
+    def load_runtime_files_into_box!(files)
+      files.each do |path|
+        box.load(path)
+        normalize_rails_constant_name!(path)
+      end
+    end
+
+    def dispatch_controller_action(env, controller, action_name, path_parameters)
+      current_parameters = env.fetch(
+        "action_dispatch.request.path_parameters",
+        Hash.new
+      )
+      request_env = env.merge(
+        "action_dispatch.request.path_parameters" =>
+          current_parameters.merge(path_parameters.transform_keys(&:to_sym))
+      )
+
+      controller.action(action_name).call(request_env)
+    end
+
+    def attach_rails_helpers!
       helper_modules = Dir[module_root.join("app/helpers/**/*_helper.rb").to_s].sort.filter_map do |path|
         constant_name = rails_constant_name_for(path)
         resolve_runtime_class(constant_name) if constant_name
@@ -125,7 +186,6 @@ module Torikago
     end
 
     def prepare_rails_application_controller_in_box!
-      return unless rails_engine?
       return unless Object.const_defined?(:ActionController, false)
       return unless module_root.join("app/controllers/#{name}/application_controller.rb").exist?
 
@@ -310,6 +370,16 @@ module Torikago
       ].uniq
     end
 
+    def controller_runtime_files
+      [
+        *library_files,
+        *Dir[module_root.join("app/models/**/*.rb").to_s].sort,
+        *Dir[module_root.join("app/helpers/**/*.rb").to_s].sort,
+        *rails_controller_files,
+        *Dir[public_api_root.join("**/*.rb").to_s].sort
+      ].uniq
+    end
+
     def rails_controller_files
       files = Dir[module_root.join("app/controllers/**/*.rb").to_s].sort
       application_controllers, other_controllers = files.partition do |path|
@@ -396,9 +466,16 @@ module Torikago
     def install_host_runtime_bridges!
       install_host_constant_bridge!(:Torikago)
       FRAMEWORK_CONSTANTS.each { |constant_name| install_host_constant_bridge!(constant_name) }
-      if rails_engine? && Object.const_defined?(:ActiveSupport, false) && box.respond_to?(:require)
-        box.require("active_support/core_ext/object/blank")
-      end
+      install_rails_runtime_support! if rails_engine?
+    end
+
+    def install_rails_runtime_support!
+      install_host_constant_bridge!(:ApplicationController)
+      install_host_constant_bridge!(:ApplicationRecord)
+      return unless Object.const_defined?(:ActiveSupport, false)
+      return unless box.respond_to?(:require)
+
+      box.require("active_support/core_ext/object/blank")
     end
 
     def install_host_constant_bridge!(constant_name)

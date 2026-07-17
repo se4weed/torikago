@@ -2,6 +2,7 @@ require_relative "torikago/configuration"
 require_relative "torikago/current_execution"
 require_relative "torikago/checker"
 require_relative "torikago/cli"
+require_relative "torikago/controller_endpoint"
 require_relative "torikago/engine_container"
 require_relative "torikago/errors"
 require_relative "torikago/invocation"
@@ -31,6 +32,10 @@ module Torikago
 
     def registry
       @registry ||= Registry.new(configuration: configuration)
+    end
+
+    def action(module_name, controller_name, action_name)
+      ControllerEndpoint.new(module_name, controller_name, action_name)
     end
 
     def version

@@ -12,7 +12,11 @@ Rails.application.routes.draw do
   root to: "catalog#showcase"
 
   get "gem-versions" => "gem_versions#show"
-  get "qux/showcase" => "qux/showcase#show"
+  get "qux/showcase" => Torikago.action(
+    :qux,
+    "ShowcaseController",
+    :show
+  )
 
   mount Torikago::RackEndpoint.new(:bar) => "/bar"
   mount Torikago::RackEndpoint.new(:baz) => "/baz"
