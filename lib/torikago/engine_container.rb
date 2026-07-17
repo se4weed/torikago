@@ -396,7 +396,9 @@ module Torikago
     def install_host_runtime_bridges!
       install_host_constant_bridge!(:Torikago)
       FRAMEWORK_CONSTANTS.each { |constant_name| install_host_constant_bridge!(constant_name) }
-      box.require("active_support/core_ext/object/blank") if rails_engine? && box.respond_to?(:require)
+      if rails_engine? && Object.const_defined?(:ActiveSupport, false) && box.respond_to?(:require)
+        box.require("active_support/core_ext/object/blank")
+      end
     end
 
     def install_host_constant_bridge!(constant_name)
