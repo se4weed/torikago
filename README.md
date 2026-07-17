@@ -72,6 +72,34 @@ This runs `Foo::ListProductsQuery.new(page: 2).public_send(:execute!, per_page: 
 
 `Gateway.call` has been removed. Migrate `Gateway.call("Foo::Query", value)` to `Gateway.invoke("Foo::Query", :call, value)`, and add `methods: [call]` to its manifest entry. `update-package-api` preserves existing `methods`; newly discovered entries use `methods: []` so the public surface must be chosen explicitly.
 
+## Referencing Root Module constants
+
+A Registered Module can reference top-level constants from the Rails application (the Root Module) without declaring them in a manifest. Torikago shares the same class or module object from the main Box, so Root constants can be used for inheritance as well as Query or Command calls.
+
+Use an absolute constant reference beginning with `::` from inside a module namespace. This prevents a typo such as `Foo::Order` from silently falling back to the Root `::Order`.
+
+```ruby
+# Rails application
+class Order
+end
+
+class CustomerQuery
+  def self.call(customer_id:)
+    # ...
+  end
+end
+
+# Inside a config.register(:foo, ...) module
+class Foo::SpecialOrder < ::Order
+end
+
+::CustomerQuery.call(customer_id: 1)
+```
+
+Ownership is atomic at the top-level constant. A top-level constant whose definition is below a `config.register(..., root:)` path is not exposed automatically to another Module Box. Because a Root-owned class or module is shared as the same object, reopening that namespace from a registered root cannot isolate only the newly added child constants. Torikago rejects the whole namespace when it can detect this conflict, but mixed-ownership namespaces are not supported. Put constants that need isolation below a module-owned top-level namespace instead.
+
+A module-local constant with the same name takes precedence. Calls from the Root Module to a Registered Module, and calls between Registered Modules, must still use `Torikago::Gateway`.
+
 ## Example app
 
 A minimal Rails example app lives in `example/rails-modular-monolith/`.

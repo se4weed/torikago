@@ -83,4 +83,16 @@ class TorikagoRegistryTest < Minitest::Test
 
     assert_instance_of Torikago::EngineContainer, container
   end
+
+  def test_default_container_receives_every_registered_root
+    @configuration.register(:bar, root: "/components/bar")
+    registry = Torikago::Registry.new(configuration: @configuration)
+
+    container = registry.resolve(:foo)
+
+    assert_equal(
+      [Pathname("/modules/foo"), Pathname("/components/bar")],
+      container.send(:registered_roots)
+    )
+  end
 end

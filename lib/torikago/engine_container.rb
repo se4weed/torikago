@@ -1,4 +1,5 @@
 require "pathname"
+require_relative "root_constant_resolver"
 
 module Torikago
   # Owns the runtime for one registered module. When Ruby::Box is available it
@@ -7,16 +8,18 @@ module Torikago
   class EngineContainer
     BUNDLER_SETUP_ENV_MUTEX = Mutex.new
 
-    def initialize(name:, module_root:, entrypoint: nil, rails_engine: false, setup: nil, gemfile: nil, box_factory: nil, gemfile_dependency_loader: nil, gem_activator: nil)
+    def initialize(name:, module_root:, entrypoint: nil, rails_engine: false, setup: nil, gemfile: nil, registered_roots: nil, box_factory: nil, gemfile_dependency_loader: nil, gem_activator: nil, root_constant_resolver: nil)
       @name = name
       @module_root = Pathname(module_root)
       @entrypoint = entrypoint
       @rails_engine = rails_engine
       @setup = setup
       @gemfile = gemfile
+      @registered_roots = registered_roots || [@module_root]
       @box_factory = box_factory
       @gemfile_dependency_loader = gemfile_dependency_loader || method(:load_gemfile_dependencies)
       @gem_activator = gem_activator || method(:activate_gem_dependency)
+      @root_constant_resolver = root_constant_resolver
     end
 
     def invoke(public_api_class_name, method_name, constructor_args:, constructor_kwargs:, method_args:, method_kwargs:)
@@ -29,7 +32,7 @@ module Torikago
 
     private
 
-    attr_reader :box_factory, :entrypoint, :gem_activator, :gemfile, :gemfile_dependency_loader, :module_root, :name, :setup
+    attr_reader :box_factory, :entrypoint, :gem_activator, :gemfile, :gemfile_dependency_loader, :module_root, :name, :registered_roots, :root_constant_resolver, :setup
 
     def boot_runtime!
       return if @booted
@@ -196,7 +199,39 @@ module Torikago
       if box.respond_to?(:require)
         box.require("torikago/current_execution")
       end
+      install_gateway_bridge!
+      install_root_constant_fallback!
       @box_prepared = true
+    end
+
+    def install_gateway_bridge!
+      box_torikago = box.const_get(:Torikago)
+      return if box_torikago.const_defined?(:Gateway, false)
+
+      box_torikago.const_set(:Gateway, Torikago::Gateway)
+    end
+
+    def install_root_constant_fallback!
+      return unless box.respond_to?(:eval)
+
+      resolver = root_constant_resolver || RootConstantResolver.new(registered_roots: registered_roots)
+      box_torikago = box.const_get(:Torikago)
+      box_torikago.const_set(:ROOT_CONSTANT_RESOLVER, resolver)
+      box_torikago.const_set(:ROOT_CONSTANT_UNRESOLVED, resolver.unresolved)
+      box.eval(<<~RUBY)
+        module Torikago
+          module RootConstantFallback
+            def const_missing(name)
+              resolved = ROOT_CONSTANT_RESOLVER.resolve(name)
+              return resolved unless resolved.equal?(ROOT_CONSTANT_UNRESOLVED)
+
+              super
+            end
+          end
+        end
+
+        Object.singleton_class.prepend(Torikago::RootConstantFallback)
+      RUBY
     end
 
     def gateway_model_files
