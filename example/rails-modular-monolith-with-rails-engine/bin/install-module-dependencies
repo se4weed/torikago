@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$APP_ROOT"
+
+bin/rails runner '
+  Torikago.configuration.each_definition do |definition|
+    next unless definition.gemfile
+
+    print definition.root.join(definition.gemfile).expand_path, "\0"
+  end
+' |
+  while IFS= read -r -d '' gemfile; do
+    echo "== Installing dependencies from ${gemfile#"$APP_ROOT"/} =="
+    BUNDLE_GEMFILE="$gemfile" bundle install
+  done

@@ -30,8 +30,12 @@ ownership; Rails::Engine is not required.
 `Ruby::Box` must be enabled when running this example.
 
 ```sh
+bin/install-module-dependencies
 bundle exec bin/box-rails s
 ```
+
+`bin/install-module-dependencies` loads the Torikago configuration and runs
+`bundle install` for every registered module that declares a `gemfile`.
 
 ## Testing
 
