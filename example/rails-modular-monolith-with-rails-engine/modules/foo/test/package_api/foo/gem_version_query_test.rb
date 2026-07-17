@@ -1,6 +1,6 @@
 require_relative "../../../../../test/test_helper"
 
-class Foo::GemVersionQueryTest < ActiveSupport::TestCase
+class FooGemVersionQueryTest < ActiveSupport::TestCase
   test "call reports foo-local gem versions" do
     result = Torikago::Gateway.invoke("Foo::GemVersionQuery", :call)
 

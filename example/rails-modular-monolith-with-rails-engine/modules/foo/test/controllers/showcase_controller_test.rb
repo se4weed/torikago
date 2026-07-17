@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Foo::ShowcaseControllerTest < ActionDispatch::IntegrationTest
+class FooShowcaseControllerTest < ActionDispatch::IntegrationTest
   test "show runs with its box-local String monkey patch" do
     get "/foo/showcase"
 

@@ -16,6 +16,7 @@ Torikago.configure do |config|
     :foo,
     root: Rails.root.join("modules/foo"),
     entrypoint: "app/package_api",    # optional
+    rails_engine: true,               # optional
     setup: "config/box_setup.rb",     # optional
     gemfile: "Gemfile"                # optional
   )
@@ -29,6 +30,9 @@ end
 - `entrypoint`
   - public APIを探索するディレクトリ、またはその配下のファイル
   - 未指定時は`app/package_api`
+- `rails_engine`
+  - moduleのengine entrypoint、routes、Controller、Model、helper、Package APIを同じBoxへ読み込む
+  - host routerでは`Foo::Engine`ではなく`Torikago::RackEndpoint.new(:foo)`をmountする
 - `setup`
   - Box boot前に読み込むsetup hook
   - monkey patchやbox固有の初期化処理に使う
@@ -74,7 +78,14 @@ Torikago::Gateway
 
 ## Example app
 
-`example/rails-modular-monolith/`に、最小のRails example appが入っています。
+`example/rails-modular-monolith-with-rails-engine/`に、Rails::EngineをBox内で動かすexample appが入っています。
+
+```ruby
+# config/routes.rb（host application）
+mount Torikago::RackEndpoint.new(:foo) => "/"
+```
+
+endpointは現在のlazy bootを維持します。最初のHTTP requestまたはGateway呼び出しでmodule Boxを生成し、以降は同じBoxを再利用します。
 
 ## 使い方
 
@@ -87,15 +98,15 @@ bundle exec rake test
 ### example appのテスト
 
 ```sh
-cd example/rails-modular-monolith
-RUBY_BOX=1 bundle exec rails test
+cd example/rails-modular-monolith-with-rails-engine
+bundle exec bin/box-rails test
 ```
 
 ### example appの起動
 
 ```sh
-cd example/rails-modular-monolith
-RUBY_BOX=1 bundle exec rails s
+cd example/rails-modular-monolith-with-rails-engine
+bundle exec bin/box-rails s
 ```
 
 `Ruby::Box`を実際に有効にするには`RUBY_BOX=1`が必要です。
@@ -145,7 +156,8 @@ bundle exec ruby exe/torikago --help
   - segfaultや不安定さに遭遇することがある
 - Railsや一部gemとの相性問題がある
   - とくにVM全体へ影響するglobal-effect gemは、きれいに分離しきれない
-- full `Rails::Engine` confinementを素直にやるのはまだ難しい
+- Rails integrationにはprocess-globalなframework stateが残る
+  - Rails initializerやnative extensionはBoxごとに完全分離されない
 
 代表的な例外:
 

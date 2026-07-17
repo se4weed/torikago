@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Foo::ProductsControllerTest < ActionDispatch::IntegrationTest
+class FooProductsControllerTest < ActionDispatch::IntegrationTest
   EXPECTED_PRODUCTS = [
     { "id" => "coffee-beans", "name" => "Coffee Beans" },
     { "id" => "drip-bag", "name" => "Drip Bag" }

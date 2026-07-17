@@ -14,7 +14,7 @@ Rails.application.routes.draw do
   get "gem-versions" => "gem_versions#show"
   get "qux/showcase" => "qux/showcase#show"
 
-  mount Bar::Engine => "/bar"
-  mount Baz::Engine => "/baz"
-  mount Foo::Engine => "/"
+  mount Torikago::RackEndpoint.new(:bar) => "/bar"
+  mount Torikago::RackEndpoint.new(:baz) => "/baz"
+  mount Torikago::RackEndpoint.new(:foo) => "/"
 end

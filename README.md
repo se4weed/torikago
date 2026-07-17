@@ -16,6 +16,7 @@ Torikago.configure do |config|
     :foo,
     root: Rails.root.join("modules/foo"),
     entrypoint: "app/package_api",    # optional
+    rails_engine: true,               # optional
     setup: "config/box_setup.rb",     # optional
     gemfile: "Gemfile"                # optional
   )
@@ -29,6 +30,9 @@ The main `config.register` options are:
 - `entrypoint`
   - the directory, or file under that directory, used to discover public APIs
   - defaults to `app/package_api`
+- `rails_engine`
+  - loads the module's engine entrypoint, routes, controllers, models, helpers, and Package APIs in the same Box
+  - mount `Torikago::RackEndpoint.new(:foo)` in the host router instead of mounting `Foo::Engine`
 - `setup`
   - a setup hook loaded before Box boot completes
   - useful for monkey patches or Box-specific initialization
@@ -74,7 +78,16 @@ This runs `Foo::ListProductsQuery.new(page: 2).public_send(:execute!, per_page: 
 
 ## Example app
 
-A minimal Rails example app lives in `example/rails-modular-monolith/`.
+The Rails::Engine confinement example lives in
+`example/rails-modular-monolith-with-rails-engine/`.
+
+```ruby
+# config/routes.rb (host application)
+mount Torikago::RackEndpoint.new(:foo) => "/"
+```
+
+The endpoint preserves lazy boot: the module Box is created on the first HTTP
+request or Gateway invocation and reused afterward.
 
 ## Usage
 
@@ -87,15 +100,15 @@ bundle exec rake test
 ### Run example app tests
 
 ```sh
-cd example/rails-modular-monolith
-RUBY_BOX=1 bundle exec rails test
+cd example/rails-modular-monolith-with-rails-engine
+bundle exec bin/box-rails test
 ```
 
 ### Start the example app
 
 ```sh
-cd example/rails-modular-monolith
-RUBY_BOX=1 bundle exec rails s
+cd example/rails-modular-monolith-with-rails-engine
+bundle exec bin/box-rails s
 ```
 
 `RUBY_BOX=1` is required to actually enable `Ruby::Box`.
@@ -143,7 +156,8 @@ These are pragmatic workarounds for the current example app, not a finalized lon
   - segfaults and instability can happen
 - Some gems do not cooperate well with this model
   - especially global-effect gems that influence the whole VM
-- Full `Rails::Engine` confinement is still difficult to do cleanly
+- Rails integration still relies on process-global framework state
+  - Rails initializers and native extensions are not completely isolated per Box
 
 Common errors:
 

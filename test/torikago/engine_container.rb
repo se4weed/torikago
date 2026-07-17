@@ -187,14 +187,16 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
-  def test_invoke_skips_only_the_module_lib_entrypoint_when_rails_engine_is_enabled
+  def test_invoke_loads_the_module_lib_entrypoint_when_rails_engine_is_enabled
     with_module_root do |module_root|
       lib_dir = File.join(module_root, "lib")
       FileUtils.mkdir_p(File.join(lib_dir, "foo"))
       File.write(
         File.join(lib_dir, "foo.rb"),
         <<~RUBY
-          raise "Rails::Engine entrypoint should be loaded by Rails, not EngineContainer"
+          module Foo
+            RAILS_ENGINE_ENTRYPOINT = "loaded in module runtime"
+          end
         RUBY
       )
       File.write(
@@ -210,7 +212,7 @@ class TorikagoEngineContainerTest < Minitest::Test
         <<~RUBY
           class Foo::RailsEngineSupportQuery
             def call
-              Foo::SUPPORT_VALUE
+              [Foo::RAILS_ENGINE_ENTRYPOINT, Foo::SUPPORT_VALUE]
             end
           end
         RUBY
@@ -222,7 +224,80 @@ class TorikagoEngineContainerTest < Minitest::Test
         rails_engine: true
       )
 
-      assert_equal "ordinary lib file loaded", container.invoke("Foo::RailsEngineSupportQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      assert_equal(
+        ["loaded in module runtime", "ordinary lib file loaded"],
+        container.invoke("Foo::RailsEngineSupportQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+      )
+    end
+  end
+
+  def test_call_loads_and_dispatches_to_a_rails_runtime_controller
+    Dir.mktmpdir("torikago-engine-container") do |module_root|
+      FileUtils.mkdir_p(File.join(module_root, "lib"))
+      FileUtils.mkdir_p(File.join(module_root, "app/controllers/foo"))
+      FileUtils.mkdir_p(File.join(module_root, "config"))
+      File.write(
+        File.join(module_root, "lib/foo.rb"),
+        <<~RUBY
+          module Foo
+            class Routes
+              def recognize_path(path, method:)
+                raise "unexpected path" unless path == "/widgets/7"
+                raise "unexpected method" unless method == :get
+
+                { "controller" => "foo/widgets", "action" => "show", "id" => "7" }
+              end
+            end
+
+            class Engine
+              def self.routes
+                @routes ||= Routes.new
+              end
+            end
+          end
+        RUBY
+      )
+      File.write(
+        File.join(module_root, "app/controllers/foo/widgets_controller.rb"),
+        <<~RUBY
+          class Foo::WidgetsController
+            def self.action(action_name)
+              lambda do |env|
+                params = env.fetch("action_dispatch.request.path_parameters")
+                [
+                  200,
+                  { "content-type" => "text/plain" },
+                  ["\#{action_name}:\#{params.fetch(:id)}:\#{Torikago::CurrentExecution.current_box}"]
+                ]
+              end
+            end
+          end
+        RUBY
+      )
+
+      container = Torikago::EngineContainer.new(
+        name: :foo,
+        module_root: module_root,
+        rails_engine: true,
+        box_factory: -> { FakeBox.new }
+      )
+
+      response = container.call("PATH_INFO" => "/widgets/7", "REQUEST_METHOD" => "GET")
+
+      assert_equal [200, { "content-type" => "text/plain" }, ["show:7:foo"]], response
+      assert_nil Torikago::CurrentExecution.current_box
+    end
+  end
+
+  def test_call_rejects_modules_without_a_rails_engine
+    with_module_root do |module_root|
+      container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
+
+      error = assert_raises(ArgumentError) do
+        container.call("PATH_INFO" => "/", "REQUEST_METHOD" => "GET")
+      end
+
+      assert_match(/rails_engine: true/, error.message)
     end
   end
 
@@ -868,7 +943,12 @@ class TorikagoEngineContainerTest < Minitest::Test
 
   def assert_ruby_box_child_process(script, *args)
     stdout, stderr, status = Open3.capture3(
-      { "RUBY_BOX" => "1" },
+      {
+        "RUBY_BOX" => "1",
+        "RUBYOPT" => nil,
+        "BUNDLER_SETUP" => nil,
+        "BUNDLE_GEMFILE" => nil
+      },
       RbConfig.ruby,
       "-e",
       script,

@@ -7,6 +7,7 @@ require_relative "torikago/errors"
 require_relative "torikago/invocation"
 require_relative "torikago/gateway"
 require_relative "torikago/package_api_updater"
+require_relative "torikago/rack_endpoint"
 require_relative "torikago/registry"
 require_relative "torikago/version"
 
