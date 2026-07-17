@@ -42,8 +42,12 @@ See `../rails-modular-monolith` for the same app organized without
 `Ruby::Box` must be enabled when running this example.
 
 ```sh
+bin/install-module-dependencies
 bundle exec bin/box-rails s
 ```
+
+`bin/install-module-dependencies` loads the Torikago configuration and runs
+`bundle install` for every registered module that declares a `gemfile`.
 
 ## Testing
 
