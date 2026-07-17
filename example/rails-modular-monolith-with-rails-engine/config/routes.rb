@@ -14,7 +14,7 @@ Rails.application.routes.draw do
   get "gem-versions" => "gem_versions#show"
   get "qux/showcase" => Torikago.action(
     :qux,
-    "ShowcaseController",
+    "Qux::ShowcaseController",
     :show
   )
 

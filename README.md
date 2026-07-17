@@ -105,7 +105,7 @@ end
 # config/routes.rb (host application)
 get "/qux/showcase" => Torikago.action(
   :qux,
-  "ShowcaseController",
+  "Qux::ShowcaseController",
   :show
 )
 ```
@@ -113,10 +113,10 @@ get "/qux/showcase" => Torikago.action(
 The module name and root registered in `config/initializers/torikago.rb` identify
 the owner; controller constants do not need to use that module as a namespace.
 No additional `config.register` option is required for this host-route mode.
-For example, a top-level `ShowcaseController` may inherit from
-`Qux::ApplicationController`. Controllers, models, helpers, views, and Package
-APIs stay under the registered module root; they do not need to be added to the
-host application's autoload paths.
+This example uses `Qux::ShowcaseController` for code organization, but a
+top-level controller is also supported. Controllers, models, helpers, views,
+and Package APIs stay under the registered module root; they do not need to be
+added to the host application's autoload paths.
 
 ## Usage
 

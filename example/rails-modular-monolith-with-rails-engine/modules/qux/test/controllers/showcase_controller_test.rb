@@ -8,9 +8,6 @@ class QuxShowcaseControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", text: "/qux/showcase"
     assert_select ".current-box", text: "qux"
     assert_select "pre", text: "quxbox"
-    if Ruby::Box.enabled?
-      refute Object.const_defined?(:Qux, false)
-      refute Object.const_defined?(:ShowcaseController, false)
-    end
+    refute Object.const_defined?(:Qux, false) if Ruby::Box.enabled?
   end
 end

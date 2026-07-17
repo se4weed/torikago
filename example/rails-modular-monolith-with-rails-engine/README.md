@@ -26,8 +26,8 @@ It demonstrates a Rails-first modular monolith where:
   - plain module without a `Rails::Engine`
   - the host route uses `Torikago.action(...)`, so its controller is resolved and
     executed inside the Qux Box instead of being autoloaded in the main Box
-  - `ShowcaseController` is a top-level constant; module ownership comes from
-    the registered `:qux` root rather than a matching Ruby namespace
+  - the example uses `Qux::ShowcaseController`; the namespace is a code
+    organization choice rather than the source of module ownership
 
 ## Compared With The Non-Engine Example
 

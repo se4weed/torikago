@@ -102,7 +102,7 @@ end
 # config/routes.rb（host application）
 get "/qux/showcase" => Torikago.action(
   :qux,
-  "ShowcaseController",
+  "Qux::ShowcaseController",
   :show
 )
 ```
@@ -110,9 +110,9 @@ get "/qux/showcase" => Torikago.action(
 Controllerの所有moduleは、`config/initializers/torikago.rb`へ登録したmodule名と
 rootで決まります。Controller定数をmoduleと同じnamespaceへ入れる必要はなく、
 このhost route方式のために追加の`config.register` optionは必要ありません。
-たとえばtop-levelの`ShowcaseController`から`Qux::ApplicationController`を継承
-できます。Controller、Model、helper、view、Package APIをhost applicationのautoload
-pathへ追加する必要はありません。
+このexampleではコードを整理するため`Qux::ShowcaseController`を使いますが、
+top-levelのControllerも利用できます。Controller、Model、helper、view、Package APIを
+host applicationのautoload pathへ追加する必要はありません。
 
 ## 使い方
 
