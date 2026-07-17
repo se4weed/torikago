@@ -82,8 +82,8 @@ class TorikagoEngineContainerTest < Minitest::Test
           class Foo::RootAccessQuery < ::RootOrder
             def call
               [
-                RootCustomerQuery.call,
-                RootLazyQuery.call,
+                ::RootCustomerQuery.call,
+                ::RootLazyQuery.call,
                 self.class.superclass.object_id,
                 Torikago::Gateway.object_id,
                 Torikago::Gateway.invoke("Bar::Ping", :call)
@@ -203,7 +203,7 @@ class TorikagoEngineContainerTest < Minitest::Test
         <<~RUBY
           class Foo::ForbiddenRootQuery
             def call
-              BarInternal
+              ::BarInternal
             end
           end
         RUBY
@@ -236,6 +236,113 @@ class TorikagoEngineContainerTest < Minitest::Test
         RUBY
         foo_root,
         bar_root,
+        registered_constant_file
+      )
+    end
+  end
+
+  def test_invoke_does_not_resolve_a_qualified_module_constant_from_root
+    Dir.mktmpdir("torikago-root-access") do |application_root|
+      module_root = File.join(application_root, "modules/foo")
+      package_api_dir = File.join(module_root, "app/package_api/foo")
+      FileUtils.mkdir_p(package_api_dir)
+
+      root_constant_file = File.join(application_root, "order.rb")
+      File.write(root_constant_file, "class Order; end\n")
+      File.write(
+        File.join(package_api_dir, "qualified_constant_query.rb"),
+        <<~RUBY
+          class Foo::QualifiedConstantQuery
+            def call
+              Foo::Order
+            end
+          end
+        RUBY
+      )
+
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          module_root = ARGV.fetch(1)
+          root_constant_file = ARGV.fetch(2)
+
+          require "torikago"
+          load root_constant_file
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: module_root,
+            registered_roots: [module_root]
+          )
+
+          begin
+            container.invoke("Foo::QualifiedConstantQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+            raise "Foo::Order unexpectedly resolved to ::Order"
+          rescue NameError => error
+            raise unless error.message.include?("Foo::Order")
+          end
+
+          puts "ok"
+        RUBY
+        module_root,
+        root_constant_file
+      )
+    end
+  end
+
+  def test_invoke_does_not_share_a_root_namespace_with_a_registered_descendant
+    Dir.mktmpdir("torikago-root-access") do |application_root|
+      foo_root = File.join(application_root, "modules/foo")
+      bar_root = File.join(application_root, "modules/bar")
+      package_api_dir = File.join(foo_root, "app/package_api/foo")
+      FileUtils.mkdir_p(package_api_dir)
+      FileUtils.mkdir_p(bar_root)
+
+      root_namespace_file = File.join(application_root, "shared_namespace.rb")
+      registered_constant_file = File.join(bar_root, "bar_internal.rb")
+      File.write(root_namespace_file, "module SharedNamespace; end\n")
+      File.write(registered_constant_file, "class SharedNamespace::BarInternal; end\n")
+      File.write(
+        File.join(package_api_dir, "shared_namespace_query.rb"),
+        <<~RUBY
+          class Foo::SharedNamespaceQuery
+            def call
+              ::SharedNamespace::BarInternal
+            end
+          end
+        RUBY
+      )
+
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          foo_root = ARGV.fetch(1)
+          bar_root = ARGV.fetch(2)
+          root_namespace_file = ARGV.fetch(3)
+          registered_constant_file = ARGV.fetch(4)
+
+          require "torikago"
+          load root_namespace_file
+          load registered_constant_file
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: foo_root,
+            registered_roots: [foo_root, bar_root]
+          )
+
+          begin
+            container.invoke("Foo::SharedNamespaceQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+            raise "registered descendant was unexpectedly shared"
+          rescue NameError => error
+            raise unless error.message.include?("SharedNamespace")
+          end
+
+          puts "ok"
+        RUBY
+        foo_root,
+        bar_root,
+        root_namespace_file,
         registered_constant_file
       )
     end

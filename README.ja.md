@@ -74,7 +74,9 @@ Torikago::Gateway
 
 ## Root Moduleの定数参照
 
-Registered Moduleから、Railsアプリケーション本体（Root Module）の定数はmanifestへの宣言なしで参照できます。main boxの同じclass/module objectを共有するため、QueryやCommandの呼び出しだけでなく、継承にも利用できます。
+Registered Moduleから、Railsアプリケーション本体（Root Module）のtop-level定数はmanifestへの宣言なしで参照できます。main boxの同じclass/module objectを共有するため、QueryやCommandの呼び出しだけでなく、継承にも利用できます。
+
+Module namespace内から参照するときは、`::`で始まる絶対定数参照を使います。これにより、`Foo::Order`のtypoがRootの`::Order`へ暗黙にfallbackすることを防ぎます。
 
 ```ruby
 # Railsアプリケーション本体
@@ -91,10 +93,12 @@ end
 class Foo::SpecialOrder < ::Order
 end
 
-CustomerQuery.call(customer_id: 1)
+::CustomerQuery.call(customer_id: 1)
 ```
 
-Root定数かどうかはディレクトリ名ではなく、すべての`config.register(..., root:)`を境界に判定します。registered root配下で定義された定数は別のModule Boxへ自動公開されません。Module Box内に同名定数がある場合は、そのmodule-local定数が優先されます。Root ModuleからRegistered Module、およびRegistered Module間の呼び出しには、引き続き`Torikago::Gateway`を使用してください。
+ownershipはtop-level定数単位で判定します。top-level定数の定義元が`config.register(..., root:)`配下なら、その定数は別のModule Boxへ自動公開されません。Root-owned class/moduleは同じオブジェクトを共有するため、そのnamespaceをregistered rootから再オープンして子定数を追加すると、子定数だけを隔離できません。torikagoは検出可能な場合にnamespace全体の共有を拒否しますが、mixed-ownership namespace自体をサポートしません。隔離が必要な定数は、module-ownedなtop-level namespace配下へ配置してください。
+
+Module Box内に同名定数がある場合は、そのmodule-local定数が優先されます。Root ModuleからRegistered Module、およびRegistered Module間の呼び出しには、引き続き`Torikago::Gateway`を使用してください。
 
 ## Example app
 

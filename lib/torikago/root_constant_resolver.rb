@@ -16,11 +16,15 @@ module Torikago
 
     def resolve(name)
       return unresolved unless main_box.const_defined?(name, false)
+      return unresolved if registered_source?(main_box.autoload?(name, false))
 
       source_location = main_box.const_source_location(name, false)
       return unresolved if registered_source?(source_location&.first)
 
-      main_box.const_get(name, false)
+      constant = main_box.const_get(name, false)
+      return unresolved if constant.is_a?(Module) && registered_descendant?(constant)
+
+      constant
     end
 
     private
@@ -33,6 +37,25 @@ module Torikago
       normalized_source = normalize_path(source_path)
       registered_roots.any? do |root|
         normalized_source == root || normalized_source.start_with?("#{root}#{File::SEPARATOR}")
+      end
+    end
+
+    def registered_descendant?(namespace, visited = {})
+      return false if visited[namespace]
+
+      visited[namespace] = true
+      namespace.constants(false).any? do |name|
+        autoload_path = namespace.autoload?(name, false)
+        next true if registered_source?(autoload_path)
+
+        source_location = namespace.const_source_location(name, false)
+        next true if registered_source?(source_location&.first)
+        next false if autoload_path
+
+        child = namespace.const_get(name, false)
+        child.is_a?(Module) && registered_descendant?(child, visited)
+      rescue NameError
+        false
       end
     end
 

@@ -117,6 +117,7 @@ module Torikago
     attr_reader registered_roots: Array[String]
 
     def registered_source?: (String? source_path) -> bool
+    def registered_descendant?: (Module namespace, ?Hash[Module, bool] visited) -> bool
     def normalize_path: (Pathname | String path) -> String
   end
 

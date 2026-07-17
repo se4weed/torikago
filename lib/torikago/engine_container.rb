@@ -230,7 +230,7 @@ module Torikago
           end
         end
 
-        Module.prepend(Torikago::RootConstantFallback)
+        Object.singleton_class.prepend(Torikago::RootConstantFallback)
       RUBY
     end
 
