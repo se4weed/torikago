@@ -47,7 +47,9 @@ module Torikago
 
       CurrentExecution.with_box(name) do
         boot_runtime!
-        route = recognize_route(env)
+        route, rack_response = recognize_route(env)
+        return rack_response if rack_response
+
         controller = resolve_runtime_class("#{camelize_controller(route.fetch(:controller))}Controller")
 
         dispatch_controller_action(env, controller, route.fetch(:action), route)
@@ -189,6 +191,11 @@ module Torikago
       return unless Object.const_defined?(:ActionController, false)
       return unless module_root.join("app/controllers/#{name}/application_controller.rb").exist?
 
+      # FIXME: This workaround only supports controllers under the namespace
+      # derived from the registered module name. Real top-level ActionController
+      # subclasses still expose Ruby::Box's internal prefix to Rails inherited
+      # hooks and helper lookup. Track support for non-namespaced controllers in:
+      # https://github.com/se4weed/torikago/issues/15
       namespace_name = camelize(name.to_s)
       namespace = box.const_get(namespace_name)
       application_controller = if namespace.const_defined?(:ApplicationController, false)
@@ -260,27 +267,34 @@ module Torikago
     def recognize_route(env)
       engine = resolve_runtime_class("#{camelize(name.to_s)}::Engine")
       routes = engine.routes
-      route = if routes.respond_to?(:router) && Object.const_defined?(:ActionDispatch, false)
-                recognize_rails_route(routes, env)
-              else
-                routes.recognize_path(
-                  env.fetch("PATH_INFO", "/"),
-                  method: env.fetch("REQUEST_METHOD", "GET").downcase.to_sym
-                )
-              end
+      return recognize_rails_route(routes, env) if routes.respond_to?(:router) && Object.const_defined?(:ActionDispatch, false)
 
-      route.transform_keys(&:to_sym)
+      route = routes.recognize_path(
+        env.fetch("PATH_INFO", "/"),
+        method: env.fetch("REQUEST_METHOD", "GET").downcase.to_sym
+      )
+      [route.transform_keys(&:to_sym), nil]
     end
 
     def recognize_rails_route(routes, env)
-      request_class = Object.const_get(:ActionDispatch).const_get(:Request)
+      action_dispatch = Object.const_get(:ActionDispatch)
+      request_class = action_dispatch.const_get(:Request)
+      cascade_header = action_dispatch.const_get(:Constants).const_get(:X_CASCADE)
       request = request_class.new(env)
       recognized = nil
 
       routes.router.recognize(request) do |route, parameters|
         next unless route.app.matches?(request)
 
-        recognized = parameters
+        request.path_parameters = parameters
+        if route.app.dispatcher?
+          recognized = [parameters.transform_keys(&:to_sym), nil]
+        else
+          response = route.app.serve(request)
+          next if response[1][cascade_header] == "pass"
+
+          recognized = [nil, response]
+        end
         break
       end
 

@@ -111,12 +111,13 @@ get "/qux/showcase" => Torikago.action(
 ```
 
 The module name and root registered in `config/initializers/torikago.rb` identify
-the owner; controller constants do not need to use that module as a namespace.
-No additional `config.register` option is required for this host-route mode.
-This example uses `Qux::ShowcaseController` for code organization, but a
-top-level controller is also supported. Controllers, models, helpers, views,
-and Package APIs stay under the registered module root; they do not need to be
-added to the host application's autoload paths.
+the owner, and no additional `config.register` option is required for this
+host-route mode. The current Rails integration still requires real controller
+classes to live under the namespace derived from the registered module name.
+Support for non-namespaced Rails controllers is tracked in
+[issue #15](https://github.com/se4weed/torikago/issues/15). Controllers, models,
+helpers, views, and Package APIs stay under the registered module root; they do
+not need to be added to the host application's autoload paths.
 
 ## Usage
 
@@ -187,6 +188,8 @@ These are pragmatic workarounds for the current example app, not a finalized lon
   - especially global-effect gems that influence the whole VM
 - Rails integration still relies on process-global framework state
   - Rails initializers and native extensions are not completely isolated per Box
+- Real Rails controllers currently need the registered module namespace
+  - non-namespaced controller support is tracked in issue #15
 
 Common errors:
 

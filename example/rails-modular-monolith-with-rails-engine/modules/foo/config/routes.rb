@@ -1,4 +1,5 @@
 Foo::Engine.routes.draw do
+  get "legacy-showcase", to: redirect("/foo/showcase")
   get "jwt-checks" => "foo/jwt_checks#show"
 
   resources :addresses, only: [:index], controller: "foo/addresses" do

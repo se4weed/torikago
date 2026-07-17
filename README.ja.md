@@ -108,11 +108,12 @@ get "/qux/showcase" => Torikago.action(
 ```
 
 Controllerの所有moduleは、`config/initializers/torikago.rb`へ登録したmodule名と
-rootで決まります。Controller定数をmoduleと同じnamespaceへ入れる必要はなく、
-このhost route方式のために追加の`config.register` optionは必要ありません。
-このexampleではコードを整理するため`Qux::ShowcaseController`を使いますが、
-top-levelのControllerも利用できます。Controller、Model、helper、view、Package APIを
-host applicationのautoload pathへ追加する必要はありません。
+rootで決まり、このhost route方式のために追加の`config.register` optionは必要ありません。
+ただし、現在のRails integrationでは、実際のController classを登録module名から導かれる
+namespace内に置く必要があります。namespaceを持たないRails Controllerへの対応は
+[issue #15](https://github.com/se4weed/torikago/issues/15)で追跡しています。
+Controller、Model、helper、view、Package APIをhost applicationのautoload pathへ
+追加する必要はありません。
 
 ## 使い方
 
@@ -185,6 +186,8 @@ bundle exec ruby exe/torikago --help
   - とくにVM全体へ影響するglobal-effect gemは、きれいに分離しきれない
 - Rails integrationにはprocess-globalなframework stateが残る
   - Rails initializerやnative extensionはBoxごとに完全分離されない
+- 実際のRails Controllerは、現在は登録moduleのnamespace内に置く必要がある
+  - namespaceを持たないControllerへの対応はissue #15で追跡中
 
 代表的な例外:
 

@@ -26,8 +26,10 @@ It demonstrates a Rails-first modular monolith where:
   - plain module without a `Rails::Engine`
   - the host route uses `Torikago.action(...)`, so its controller is resolved and
     executed inside the Qux Box instead of being autoloaded in the main Box
-  - the example uses `Qux::ShowcaseController`; the namespace is a code
-    organization choice rather than the source of module ownership
+  - the example uses `Qux::ShowcaseController` because real Rails controllers
+    currently need the namespace derived from the registered module name
+  - non-namespaced Rails controller support is tracked in
+    https://github.com/se4weed/torikago/issues/15
 
 ## Compared With The Non-Engine Example
 
@@ -39,7 +41,7 @@ and non-Engine modules can coexist while keeping both Package APIs and
 controllers in their module Box.
 
 See `../rails-modular-monolith` for the same app organized without
-`Rails::Engine`, using host app routes and host app module autoload paths.
+`Rails::Engine`, using host routes and `Torikago.action(...)` endpoints.
 
 ## Running
 

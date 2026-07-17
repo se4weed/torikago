@@ -186,7 +186,7 @@ module Torikago
     def prepare_rails_application_controller_in_box!: () -> untyped
     def normalize_rails_constant_name!: (String path) -> untyped
     def rails_constant_name_for: (String path) -> String?
-    def recognize_route: (Hash[String, untyped] env) -> Hash[Symbol, untyped]
+    def recognize_route: (Hash[String, untyped] env) -> untyped
     def recognize_rails_route: (untyped routes, Hash[String, untyped] env) -> untyped
     def camelize_controller: (String controller_path) -> String
     def load_setup_hook!: () -> untyped

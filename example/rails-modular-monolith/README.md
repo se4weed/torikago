@@ -23,7 +23,9 @@ It demonstrates a Rails-first modular monolith where:
 
 The module runtime directories are not added to the host application's
 autoload, eager-load, or view paths. The registered module name and root identify
-ownership; Rails::Engine is not required.
+ownership; Rails::Engine is not required. Real Rails controllers currently need
+the namespace derived from the registered module name. Non-namespaced controller
+support is tracked in https://github.com/se4weed/torikago/issues/15.
 
 ## Running
 
