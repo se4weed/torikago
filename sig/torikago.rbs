@@ -103,6 +103,23 @@ module Torikago
     def build_container: (Configuration::Definition definition) -> EngineContainer
   end
 
+  class RootConstantResolver
+    UNRESOLVED: Object
+
+    attr_reader unresolved: Object
+
+    def initialize: (registered_roots: Array[Pathname | String], ?main_box: untyped) -> void
+    def resolve: (Symbol | String name) -> untyped
+
+    private
+
+    attr_reader main_box: untyped
+    attr_reader registered_roots: Array[String]
+
+    def registered_source?: (String? source_path) -> bool
+    def normalize_path: (Pathname | String path) -> String
+  end
+
   class EngineContainer
     BUNDLER_SETUP_ENV_MUTEX: Mutex
 
@@ -113,9 +130,11 @@ module Torikago
       ?rails_engine: bool,
       ?setup: String?,
       ?gemfile: String?,
+      ?registered_roots: Array[Pathname | String]?,
       ?box_factory: untyped,
       ?gemfile_dependency_loader: untyped,
-      ?gem_activator: untyped
+      ?gem_activator: untyped,
+      ?root_constant_resolver: RootConstantResolver?
     ) -> void
 
     def invoke: (
@@ -136,6 +155,8 @@ module Torikago
     attr_reader gemfile_dependency_loader: untyped
     attr_reader module_root: Pathname
     attr_reader name: Symbol | String
+    attr_reader registered_roots: Array[Pathname | String]
+    attr_reader root_constant_resolver: RootConstantResolver?
     attr_reader setup: String?
 
     def boot_runtime!: () -> untyped
@@ -154,6 +175,8 @@ module Torikago
     def box: () -> untyped
     def with_box_runtime_errors: [A] () { () -> A } -> A
     def prepare_box!: () -> untyped
+    def install_gateway_bridge!: () -> untyped
+    def install_root_constant_fallback!: () -> untyped
     def gateway_model_files: () -> Array[String]
     def rails_model_file?: (String path) -> bool
     def load_setup_hook_into_box!: () -> untyped
@@ -313,9 +336,11 @@ module Ruby
     def load_path: () -> Array[String]
     def require: (String feature) -> untyped
     def load: (String path) -> untyped
+    def eval: (String source) -> untyped
     def const_defined?: (String name, bool inherit) -> bool
-    def const_set: (String name, Module module_) -> Module
-    def const_get: (String name) -> untyped
+    def const_source_location: (String name, bool inherit) -> [String, Integer]?
+    def const_set: (String name, untyped value) -> untyped
+    def const_get: (String name, ?bool inherit) -> untyped
   end
 end
 

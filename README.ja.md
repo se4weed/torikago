@@ -72,6 +72,30 @@ Torikago::Gateway
 
 `Gateway.call`は削除されました。`Gateway.call("Foo::Query", value)`は`Gateway.invoke("Foo::Query", :call, value)`へ変更し、manifestへ`methods: [call]`を追加してください。`update-package-api`は既存の`methods`を保持し、新規発見したentryには`methods: []`を生成するため、公開methodを明示的に選ぶ必要があります。
 
+## Root Moduleの定数参照
+
+Registered Moduleから、Railsアプリケーション本体（Root Module）の定数はmanifestへの宣言なしで参照できます。main boxの同じclass/module objectを共有するため、QueryやCommandの呼び出しだけでなく、継承にも利用できます。
+
+```ruby
+# Railsアプリケーション本体
+class Order
+end
+
+class CustomerQuery
+  def self.call(customer_id:)
+    # ...
+  end
+end
+
+# config.register(:foo, ...)されたmodule内
+class Foo::SpecialOrder < ::Order
+end
+
+CustomerQuery.call(customer_id: 1)
+```
+
+Root定数かどうかはディレクトリ名ではなく、すべての`config.register(..., root:)`を境界に判定します。registered root配下で定義された定数は別のModule Boxへ自動公開されません。Module Box内に同名定数がある場合は、そのmodule-local定数が優先されます。Root ModuleからRegistered Module、およびRegistered Module間の呼び出しには、引き続き`Torikago::Gateway`を使用してください。
+
 ## Example app
 
 `example/rails-modular-monolith/`に、最小のRails example appが入っています。

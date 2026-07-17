@@ -45,6 +45,202 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_invoke_shares_root_constants_and_runtime_gateway_with_a_ruby_box
+    Dir.mktmpdir("torikago-root-access") do |application_root|
+      module_root = File.join(application_root, "modules/foo")
+      package_api_dir = File.join(module_root, "app/package_api/foo")
+      FileUtils.mkdir_p(package_api_dir)
+
+      root_constant_file = File.join(application_root, "root_constants.rb")
+      File.write(
+        root_constant_file,
+        <<~RUBY
+          class RootOrder
+          end
+
+          class RootCustomerQuery
+            def self.call
+              "root customer"
+            end
+          end
+        RUBY
+      )
+      lazy_constant_file = File.join(application_root, "root_lazy_query.rb")
+      File.write(
+        lazy_constant_file,
+        <<~RUBY
+          class RootLazyQuery
+            def self.call
+              "lazy root"
+            end
+          end
+        RUBY
+      )
+      File.write(
+        File.join(package_api_dir, "root_access_query.rb"),
+        <<~RUBY
+          class Foo::RootAccessQuery < ::RootOrder
+            def call
+              [
+                RootCustomerQuery.call,
+                RootLazyQuery.call,
+                self.class.superclass.object_id,
+                Torikago::Gateway.object_id,
+                Torikago::Gateway.invoke("Bar::Ping", :call)
+              ]
+            end
+          end
+        RUBY
+      )
+
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          module_root = ARGV.fetch(1)
+          root_constant_file = ARGV.fetch(2)
+          lazy_constant_file = ARGV.fetch(3)
+
+          require "torikago"
+          load root_constant_file
+          autoload :RootLazyQuery, lazy_constant_file
+          gateway_probe = Object.new
+          gateway_probe.define_singleton_method(:invoke) { |class_name, method_name| [class_name, method_name] }
+          Torikago.instance_variable_set(:@gateway, gateway_probe)
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: module_root,
+            registered_roots: [module_root]
+          )
+
+          result = container.invoke("Foo::RootAccessQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+          expected = [
+            "root customer",
+            "lazy root",
+            RootOrder.object_id,
+            Torikago::Gateway.object_id,
+            ["Bar::Ping", :call]
+          ]
+          raise "unexpected result: \#{result.inspect}" unless result == expected
+
+          Object.send(:remove_const, :RootCustomerQuery)
+          class RootCustomerQuery
+            def self.call
+              "reloaded root customer"
+            end
+          end
+          reloaded_result = container.invoke("Foo::RootAccessQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+          raise "stale root constant: \#{reloaded_result.inspect}" unless reloaded_result.first == "reloaded root customer"
+
+          puts "ok"
+        RUBY
+        module_root,
+        root_constant_file,
+        lazy_constant_file
+      )
+    end
+  end
+
+  def test_invoke_prefers_module_local_constants_over_root_constants
+    Dir.mktmpdir("torikago-root-access") do |application_root|
+      module_root = File.join(application_root, "modules/foo")
+      package_api_dir = File.join(module_root, "app/package_api/foo")
+      FileUtils.mkdir_p(package_api_dir)
+
+      root_constant_file = File.join(application_root, "root_constant.rb")
+      File.write(root_constant_file, "RootPriority = \"root\"\n")
+      File.write(
+        File.join(package_api_dir, "priority_query.rb"),
+        <<~RUBY
+          RootPriority = "module"
+
+          class Foo::PriorityQuery
+            def call
+              RootPriority
+            end
+          end
+        RUBY
+      )
+
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          module_root = ARGV.fetch(1)
+          root_constant_file = ARGV.fetch(2)
+
+          require "torikago"
+          load root_constant_file
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: module_root,
+            registered_roots: [module_root]
+          )
+
+          result = container.invoke("Foo::PriorityQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+          raise "unexpected result: \#{result.inspect}" unless result == "module"
+
+          puts "ok"
+        RUBY
+        module_root,
+        root_constant_file
+      )
+    end
+  end
+
+  def test_invoke_does_not_share_constants_owned_by_a_registered_root
+    Dir.mktmpdir("torikago-root-access") do |application_root|
+      foo_root = File.join(application_root, "packs/foo")
+      bar_root = File.join(application_root, "components/bar")
+      package_api_dir = File.join(foo_root, "app/package_api/foo")
+      FileUtils.mkdir_p(package_api_dir)
+      FileUtils.mkdir_p(bar_root)
+
+      registered_constant_file = File.join(bar_root, "bar_internal.rb")
+      File.write(registered_constant_file, "class BarInternal; end\n")
+      File.write(
+        File.join(package_api_dir, "forbidden_root_query.rb"),
+        <<~RUBY
+          class Foo::ForbiddenRootQuery
+            def call
+              BarInternal
+            end
+          end
+        RUBY
+      )
+
+      assert_ruby_box_child_process(
+        <<~RUBY,
+          $LOAD_PATH.unshift(ARGV.fetch(0))
+          foo_root = ARGV.fetch(1)
+          bar_root = ARGV.fetch(2)
+          registered_constant_file = ARGV.fetch(3)
+
+          require "torikago"
+          load registered_constant_file
+
+          container = Torikago::EngineContainer.new(
+            name: :foo,
+            module_root: foo_root,
+            registered_roots: [foo_root, bar_root]
+          )
+
+          begin
+            container.invoke("Foo::ForbiddenRootQuery", :call, constructor_args: [], constructor_kwargs: {}, method_args: [], method_kwargs: {})
+            raise "registered constant was unexpectedly shared"
+          rescue NameError => error
+            raise unless error.message.include?("BarInternal")
+          end
+
+          puts "ok"
+        RUBY
+        foo_root,
+        bar_root,
+        registered_constant_file
+      )
+    end
+  end
+
   def test_invoke_does_not_strip_bundler_env_during_public_api_execution
     with_module_root do |module_root|
       File.write(

@@ -28,7 +28,8 @@ module Torikago
         entrypoint: definition.entrypoint,
         rails_engine: definition.rails_engine,
         setup: definition.setup,
-        gemfile: definition.gemfile
+        gemfile: definition.gemfile,
+        registered_roots: @configuration.each_definition.map(&:root)
       )
     end
   end
