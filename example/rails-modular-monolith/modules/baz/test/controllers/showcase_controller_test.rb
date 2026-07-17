@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Baz::ShowcaseControllerTest < ActionDispatch::IntegrationTest
+class BazShowcaseControllerTest < ActionDispatch::IntegrationTest
   test "show renders from its own box" do
     get "/baz/showcase"
 

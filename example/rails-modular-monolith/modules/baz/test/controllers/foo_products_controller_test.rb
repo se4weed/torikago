@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Baz::FooProductsControllerTest < ActionDispatch::IntegrationTest
+class BazFooProductsControllerTest < ActionDispatch::IntegrationTest
   test "index can call foo product package API through its declared dependency" do
     get "/baz/foo-products"
 

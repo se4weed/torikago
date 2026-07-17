@@ -53,17 +53,5 @@ module RailsModularMonolith
 
     # Don't generate system test files.
     config.generators.system_tests = nil
-
-    Rails.root.glob("modules/*/app/controllers").each do |path|
-      config.autoload_paths << path.to_s
-    end
-
-    Rails.root.glob("modules/*/app/models").each do |path|
-      config.autoload_paths << path.to_s
-    end
-
-    Rails.root.glob("modules/*/app/views").each do |path|
-      config.paths["app/views"] << path.to_s
-    end
   end
 end

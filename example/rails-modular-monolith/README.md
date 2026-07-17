@@ -7,6 +7,8 @@ It demonstrates a Rails-first modular monolith where:
 - the host Rails app calls module public methods through `Torikago::Gateway.invoke(...)` or `build(...).invoke(...)`
 - each module declares its public classes, methods, and callers in `package_api.yml`
 - a module can run setup code before its public API is loaded
+- host-owned routes dispatch module controllers through `Torikago.action(...)`
+- controllers, models, views, and Package APIs execute in the registered module Box without a `Rails::Engine`
 
 ## Layout
 
@@ -16,19 +18,25 @@ It demonstrates a Rails-first modular monolith where:
   - example module with query / command style public APIs
 - `config/initializers/torikago.rb`
   - registers module roots and their runtime settings
+- `config/routes.rb`
+  - maps host routes to Box-owned controllers with an explicit module name
+
+The module runtime directories are not added to the host application's
+autoload, eager-load, or view paths. The registered module name and root identify
+ownership; Rails::Engine is not required.
 
 ## Running
 
 `Ruby::Box` must be enabled when running this example.
 
 ```sh
-RUBY_BOX=1 bundle exec rails s
+bundle exec bin/box-rails s
 ```
 
 ## Testing
 
 ```sh
-RUBY_BOX=1 bundle exec rails test
+bundle exec bin/box-rails test test modules/foo/test modules/bar/test modules/baz/test
 ```
 
 ## Notes About Boot

@@ -1,6 +1,6 @@
 require_relative "../../../../../test/test_helper"
 
-class Foo::ListProductsQueryTest < ActiveSupport::TestCase
+class FooListProductsQueryTest < ActiveSupport::TestCase
   test "call returns the public product list" do
     result = Torikago::Gateway.invoke("Foo::ListProductsQuery", :call)
 

@@ -1,7 +1,5 @@
-class Foo::BazChecksController < ApplicationController
+class Foo::BazChecksController < Foo::ApplicationController
   def show
-    @baz_banner = Torikago::CurrentExecution.with_box(:foo) do
-      Torikago::Gateway.invoke("Baz::SafeBannerQuery", :call)
-    end
+    @baz_banner = Torikago::Gateway.invoke("Baz::SafeBannerQuery", :call)
   end
 end

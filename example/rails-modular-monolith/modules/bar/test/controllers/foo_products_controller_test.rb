@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Bar::FooProductsControllerTest < ActionDispatch::IntegrationTest
+class BarFooProductsControllerTest < ActionDispatch::IntegrationTest
   test "index raises a dependency boundary error when it calls foo products" do
     error = assert_raises(Torikago::DependencyError) do
       get "/bar/foo-products"

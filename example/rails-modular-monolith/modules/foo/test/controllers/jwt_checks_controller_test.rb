@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Foo::JwtChecksControllerTest < ActionDispatch::IntegrationTest
+class FooJwtChecksControllerTest < ActionDispatch::IntegrationTest
   test "show compares main app and module boxes" do
     get "/jwt-checks"
 
