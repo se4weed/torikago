@@ -1,6 +1,6 @@
 require "test_helper"
 
-class PackageApiEagerLoadTest < ActiveSupport::TestCase
+class ModuleRuntimeIsolationTest < ActiveSupport::TestCase
   test "registered module runtime paths and constants stay out of the host Rails app" do
     %i[foo bar baz].each do |module_name|
       definition = Torikago.configuration.fetch(module_name)

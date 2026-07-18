@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Bar::BazChecksControllerTest < ActionDispatch::IntegrationTest
+class BarBazChecksControllerTest < ActionDispatch::IntegrationTest
   test "show renders a dependency boundary error when it calls baz" do
     get "/bar/baz-check"
 

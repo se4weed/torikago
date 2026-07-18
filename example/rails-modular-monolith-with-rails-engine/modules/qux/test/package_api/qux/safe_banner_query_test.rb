@@ -1,6 +1,6 @@
 require_relative "../../../../../test/test_helper"
 
-class Qux::SafeBannerQueryTest < ActiveSupport::TestCase
+class QuxSafeBannerQueryTest < ActiveSupport::TestCase
   test "call returns the qux banner" do
     result = Torikago::Gateway.invoke("Qux::SafeBannerQuery", :call)
 

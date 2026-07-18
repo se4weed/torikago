@@ -7,7 +7,7 @@
 
   <section class="panel search-panel">
     <div class="panel-body">
-      <%= form_with local: true, method: :post, url: Foo::Engine.routes.url_helpers.search_addresses_path do |f| %>
+      <%= form_with local: true, method: :post, url: "/addresses/search" do |f| %>
         <div class="form-row">
           <%= f.label :postal_code, "Postal Code" %>
           <%= f.text_field :postal_code, value: @lookup.postal_code, placeholder: "e.g., 013-0310", class: "form-control" %>

@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Foo::BazChecksControllerTest < ActionDispatch::IntegrationTest
+class FooBazChecksControllerTest < ActionDispatch::IntegrationTest
   test "show can call baz package API through its declared dependency" do
     get "/foo/baz-check"
 

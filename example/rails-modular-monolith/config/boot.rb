@@ -12,3 +12,12 @@ unless Dir.respond_to?(:tmpdir)
 end
 
 require "bundler/setup" # Set up gems listed in the Gemfile.
+
+if ENV["RUBY_BOX"] == "1"
+  if ENV["RUBYOPT"]&.include?("bundler/setup")
+    rubyopt = ENV["RUBYOPT"].split.reject { |option| option.include?("bundler/setup") }
+    rubyopt.empty? ? ENV.delete("RUBYOPT") : ENV["RUBYOPT"] = rubyopt.join(" ")
+  end
+
+  ENV.delete("BUNDLER_SETUP")
+end

@@ -1,6 +1,6 @@
 require_relative "../../../../../test/test_helper"
 
-class Bar::LookupAddressQueryTest < ActiveSupport::TestCase
+class BarLookupAddressQueryTest < ActiveSupport::TestCase
   test "call returns the address from the bar postcode snapshot" do
     result = Torikago::Gateway.invoke("Bar::LookupAddressQuery", :call, "013-0310")
 

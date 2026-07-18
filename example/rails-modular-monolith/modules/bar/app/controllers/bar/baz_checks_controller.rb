@@ -1,9 +1,7 @@
-class Bar::BazChecksController < ApplicationController
+class Bar::BazChecksController < Bar::ApplicationController
   def show
     @dependency_error = begin
-      Torikago::CurrentExecution.with_box(:bar) do
-        Torikago::Gateway.invoke("Baz::SafeBannerQuery", :call)
-      end
+      Torikago::Gateway.invoke("Baz::SafeBannerQuery", :call)
 
       nil
     rescue Torikago::DependencyError => error

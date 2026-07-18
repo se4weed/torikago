@@ -1,6 +1,6 @@
 require_relative "../../../../test/test_helper"
 
-class Foo::AddressesControllerTest < ActionDispatch::IntegrationTest
+class FooAddressesControllerTest < ActionDispatch::IntegrationTest
   test "index renders the lookup form before a search" do
     get "/addresses"
 

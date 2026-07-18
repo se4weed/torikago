@@ -16,6 +16,7 @@ Torikago.configure do |config|
     :foo,
     root: Rails.root.join("modules/foo"),
     entrypoint: "app/package_api",    # optional
+    rails_engine: true,               # optional
     setup: "config/box_setup.rb",     # optional
     gemfile: "Gemfile"                # optional
   )
@@ -29,6 +30,10 @@ The main `config.register` options are:
 - `entrypoint`
   - the directory, or file under that directory, used to discover public APIs
   - defaults to `app/package_api`
+- `rails_engine`
+  - enables the module-owned Rails::Engine route set and loads its Rails runtime into the same Box
+  - mount `Torikago::RackEndpoint.new(:foo)` in the host router instead of mounting `Foo::Engine`
+  - not required when host routes dispatch controllers with `Torikago.action(...)`
 - `setup`
   - a setup hook loaded before Box boot completes
   - useful for monkey patches or Box-specific initialization
@@ -102,7 +107,45 @@ A module-local constant with the same name takes precedence. Calls from the Root
 
 ## Example app
 
-A minimal Rails example app lives in `example/rails-modular-monolith/`.
+The Rails::Engine confinement example lives in
+`example/rails-modular-monolith-with-rails-engine/`.
+
+```ruby
+# config/routes.rb (host application)
+mount Torikago::RackEndpoint.new(:foo) => "/"
+```
+
+The endpoint preserves lazy boot: the module Box is created on the first HTTP
+request or Gateway invocation and reused afterward.
+Torikago uses Rack-compatible route endpoints for this bridge; it does not add
+process-wide Rack middleware.
+
+Rails::Engine is optional for controller isolation. A host-owned route can
+dispatch to a controller constant that Torikago resolves only inside the module
+Box:
+
+```ruby
+# config/initializers/torikago.rb
+Torikago.configure do |config|
+  config.register(:qux, root: Rails.root.join("modules/qux"))
+end
+
+# config/routes.rb (host application)
+get "/qux/showcase" => Torikago.action(
+  :qux,
+  "Qux::ShowcaseController",
+  :show
+)
+```
+
+The module name and root registered in `config/initializers/torikago.rb` identify
+the owner, and no additional `config.register` option is required for this
+host-route mode. The current Rails integration still requires real controller
+classes to live under the namespace derived from the registered module name.
+Support for non-namespaced Rails controllers is tracked in
+[issue #15](https://github.com/se4weed/torikago/issues/15). Controllers, models,
+helpers, views, and Package APIs stay under the registered module root; they do
+not need to be added to the host application's autoload paths.
 
 ## Usage
 
@@ -115,15 +158,15 @@ bundle exec rake test
 ### Run example app tests
 
 ```sh
-cd example/rails-modular-monolith
-RUBY_BOX=1 bundle exec rails test
+cd example/rails-modular-monolith-with-rails-engine
+bundle exec bin/box-rails test
 ```
 
 ### Start the example app
 
 ```sh
-cd example/rails-modular-monolith
-RUBY_BOX=1 bundle exec rails s
+cd example/rails-modular-monolith-with-rails-engine
+bundle exec bin/box-rails s
 ```
 
 `RUBY_BOX=1` is required to actually enable `Ruby::Box`.
@@ -171,7 +214,10 @@ These are pragmatic workarounds for the current example app, not a finalized lon
   - segfaults and instability can happen
 - Some gems do not cooperate well with this model
   - especially global-effect gems that influence the whole VM
-- Full `Rails::Engine` confinement is still difficult to do cleanly
+- Rails integration still relies on process-global framework state
+  - Rails initializers and native extensions are not completely isolated per Box
+- Real Rails controllers currently need the registered module namespace
+  - non-namespaced controller support is tracked in issue #15
 
 Common errors:
 

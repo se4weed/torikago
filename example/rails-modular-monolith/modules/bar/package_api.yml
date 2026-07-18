@@ -6,7 +6,8 @@ exports:
   Bar::JwtCompatibilityQuery:
     methods:
       - call
-    allowed_callers: []
+    allowed_callers:
+      - foo
   Bar::SafeBannerQuery:
     methods:
       - call
@@ -14,4 +15,5 @@ exports:
   Bar::LookupAddressQuery:
     methods:
       - call
-    allowed_callers: []
+    allowed_callers:
+      - foo

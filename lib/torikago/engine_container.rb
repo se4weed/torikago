@@ -7,6 +7,23 @@ module Torikago
   # process for development and tests.
   class EngineContainer
     BUNDLER_SETUP_ENV_MUTEX = Mutex.new
+    TORIKAGO_RUNTIME_CONSTANTS = %i[
+      Error
+      DependencyError
+      BoxUnavailableError
+      PublicApiError
+      GemfileOverrideError
+      Gateway
+    ].freeze
+    FRAMEWORK_CONSTANTS = %i[
+      Rails
+      ActionController
+      ActionDispatch
+      ActionView
+      ActiveModel
+      ActiveRecord
+      ActiveSupport
+    ].freeze
 
     def initialize(name:, module_root:, entrypoint: nil, rails_engine: false, setup: nil, gemfile: nil, registered_roots: nil, box_factory: nil, gemfile_dependency_loader: nil, gem_activator: nil, root_constant_resolver: nil)
       @name = name
@@ -30,6 +47,44 @@ module Torikago
       end
     end
 
+    # Dispatches a Rack request to a Rails::Engine owned by this module. Route
+    # recognition happens against the Box-local engine, then the Box-local
+    # controller class is invoked directly so Rails never constantizes the
+    # controller in the host application's Object namespace.
+    def call(env)
+      unless rails_engine?
+        raise ArgumentError, "module #{name} is not registered with rails_engine: true"
+      end
+
+      CurrentExecution.with_box(name) do
+        boot_runtime!
+        route, rack_response = recognize_route(env)
+        return rack_response if rack_response
+
+        controller = resolve_runtime_class("#{camelize_controller(route.fetch(:controller))}Controller")
+
+        dispatch_controller_action(env, controller, route.fetch(:action), route)
+      end
+    end
+
+    # Dispatches a host-owned route to a controller that belongs to this module.
+    # Unlike #call, route recognition has already happened in the host router, so
+    # this path does not require a Rails::Engine inside the module.
+    def dispatch_controller(env, controller_name:, action_name:)
+      CurrentExecution.with_box(name) do
+        boot_controller_runtime!
+        controller = resolve_runtime_class(controller_name)
+
+        dispatch_controller_action(
+          env,
+          controller,
+          action_name,
+          controller: controller_name,
+          action: action_name.to_s
+        )
+      end
+    end
+
     private
 
     attr_reader :box_factory, :entrypoint, :gem_activator, :gemfile, :gemfile_dependency_loader, :module_root, :name, :registered_roots, :root_constant_resolver, :setup
@@ -46,12 +101,16 @@ module Torikago
           with_box_runtime_errors do
             prepare_box!
             prepend_gemfile_require_paths_to_box!
+            install_host_runtime_bridges!
             load_setup_hook_into_box!
             ensure_root_namespace_in_box!
+            prepare_rails_application_controller_in_box!
 
             files.each do |path|
               box.load(path)
+              normalize_rails_constant_name!(path)
             end
+            attach_rails_helpers!
           end
         end
       else
@@ -63,10 +122,201 @@ module Torikago
 
         files.each do |path|
           load path
+          normalize_rails_constant_name!(path)
         end
+        attach_rails_helpers!
       end
 
       @booted = true
+    end
+
+    def boot_controller_runtime!
+      boot_runtime!
+      return if rails_engine?
+      return if @controller_runtime_booted
+
+      files = controller_runtime_files - runtime_files
+      if isolated_box_enabled?
+        without_bundler_setup_env do
+          with_box_runtime_errors do
+            install_rails_runtime_support!
+            prepare_rails_application_controller_in_box!
+            load_runtime_files_into_box!(files)
+            attach_rails_helpers!
+          end
+        end
+      else
+        files.each do |path|
+          load path
+          normalize_rails_constant_name!(path)
+        end
+        attach_rails_helpers!
+      end
+
+      @controller_runtime_booted = true
+    end
+
+    def load_runtime_files_into_box!(files)
+      files.each do |path|
+        box.load(path)
+        normalize_rails_constant_name!(path)
+      end
+    end
+
+    def dispatch_controller_action(env, controller, action_name, path_parameters)
+      current_parameters = env.fetch(
+        "action_dispatch.request.path_parameters",
+        Hash.new
+      )
+      request_env = env.merge(
+        "action_dispatch.request.path_parameters" =>
+          current_parameters.merge(path_parameters.transform_keys(&:to_sym))
+      )
+
+      controller.action(action_name).call(request_env)
+    end
+
+    def attach_rails_helpers!
+      helper_modules = Dir[module_root.join("app/helpers/**/*_helper.rb").to_s].sort.filter_map do |path|
+        constant_name = rails_constant_name_for(path)
+        resolve_runtime_class(constant_name) if constant_name
+      rescue NameError
+        nil
+      end
+      return if helper_modules.empty?
+
+      rails_controller_files.each do |path|
+        constant_name = rails_constant_name_for(path)
+        next unless constant_name
+
+        controller = resolve_runtime_class(constant_name)
+        next unless controller.respond_to?(:helper)
+
+        helper_modules.each { |helper_module| controller.helper(helper_module) }
+      rescue NameError
+        next
+      end
+    end
+
+    def prepare_rails_application_controller_in_box!
+      return unless Object.const_defined?(:ActionController, false)
+      return unless module_root.join("app/controllers/#{name}/application_controller.rb").exist?
+
+      # FIXME: This workaround only supports controllers under the namespace
+      # derived from the registered module name. Real top-level ActionController
+      # subclasses still expose Ruby::Box's internal prefix to Rails inherited
+      # hooks and helper lookup. Track support for non-namespaced controllers in:
+      # https://github.com/se4weed/torikago/issues/15
+      namespace_name = camelize(name.to_s)
+      namespace = box.const_get(namespace_name)
+      application_controller = if namespace.const_defined?(:ApplicationController, false)
+                                 namespace.const_get(:ApplicationController, false)
+                               else
+                                 action_controller_base = Object.const_get(:ActionController).const_get(:Base)
+                                 namespace.const_set(:ApplicationController, Class.new(action_controller_base))
+                               end
+
+      application_controller.define_singleton_method(:name) { "#{namespace_name}::ApplicationController" }
+      application_controller.define_singleton_method(:inherited) do |subclass|
+        native_name = Module.instance_method(:name).bind_call(subclass)
+        marker = "::#{namespace_name}::"
+        conventional_name = if native_name&.include?(marker)
+                              "#{namespace_name}::#{native_name.split(marker, 2).last}"
+                            else
+                              native_name
+                            end
+        # A class is still anonymous while inherited() runs. Do not let it
+        # inherit ApplicationController's singleton name implementation.
+        subclass.define_singleton_method(:name) { conventional_name }
+        # ActiveSupport's default module_parents implementation constantizes
+        # through the host Object. Return the already-resolved Box namespace.
+        subclass.define_singleton_method(:module_parents) { [namespace] }
+        # AbstractController tries to constantize "<Controller>Helper" in the
+        # host Object namespace during inherited(). Module helpers live in this
+        # Box, so they are attached explicitly after runtime files are loaded.
+        subclass.define_singleton_method(:default_helper_module!) {}
+        subclass.singleton_class.send(:private, :default_helper_module!)
+        super(subclass)
+      end
+    end
+
+    def normalize_rails_constant_name!(path)
+      constant_name = rails_constant_name_for(path)
+      return unless constant_name
+
+      constant = resolve_runtime_class(constant_name)
+      return unless constant.respond_to?(:define_singleton_method)
+
+      # Ruby::Box includes an internal Box prefix in Module#name. Rails derives
+      # helper and model constants from that value, so expose the conventional
+      # application constant name to Rails while keeping the constant itself in
+      # the Box.
+      constant.define_singleton_method(:name) { constant_name }
+      constant.remove_instance_variable(:@controller_path) if constant.instance_variable_defined?(:@controller_path)
+      constant.remove_instance_variable(:@controller_name) if constant.instance_variable_defined?(:@controller_name)
+      if path.include?("/app/controllers/") && constant.respond_to?(:prepend_view_path)
+        constant.prepend_view_path(module_root.join("app/views").to_s)
+      end
+    rescue NameError
+      # Namespace-only files and files that define a differently named helper
+      # do not need normalization.
+      nil
+    end
+
+    def rails_constant_name_for(path)
+      app_root = module_root.join("app").to_s
+      return unless path.start_with?("#{app_root}/")
+
+      relative_path = path.delete_prefix("#{app_root}/")
+      category, constant_path = relative_path.split("/", 2)
+      return unless %w[controllers models helpers].include?(category)
+      return unless constant_path&.end_with?(".rb")
+
+      constant_path.delete_suffix(".rb").split("/").map { |segment| camelize(segment) }.join("::")
+    end
+
+    def recognize_route(env)
+      engine = resolve_runtime_class("#{camelize(name.to_s)}::Engine")
+      routes = engine.routes
+      return recognize_rails_route(routes, env) if routes.respond_to?(:router) && Object.const_defined?(:ActionDispatch, false)
+
+      route = routes.recognize_path(
+        env.fetch("PATH_INFO", "/"),
+        method: env.fetch("REQUEST_METHOD", "GET").downcase.to_sym
+      )
+      [route.transform_keys(&:to_sym), nil]
+    end
+
+    def recognize_rails_route(routes, env)
+      action_dispatch = Object.const_get(:ActionDispatch)
+      request_class = action_dispatch.const_get(:Request)
+      cascade_header = action_dispatch.const_get(:Constants).const_get(:X_CASCADE)
+      request = request_class.new(env)
+      recognized = nil
+
+      routes.router.recognize(request) do |route, parameters|
+        next unless route.app.matches?(request)
+
+        request.path_parameters = parameters
+        if route.app.dispatcher?
+          recognized = [parameters.transform_keys(&:to_sym), nil]
+        else
+          response = route.app.serve(request)
+          next if response[1][cascade_header] == "pass"
+
+          recognized = [nil, response]
+        end
+        break
+      end
+
+      return recognized if recognized
+
+      routing_error = Object.const_get(:ActionController).const_get(:RoutingError)
+      raise routing_error, "No route matches #{env.fetch("PATH_INFO", "/").inspect}"
+    end
+
+    def camelize_controller(controller_path)
+      controller_path.to_s.split("/").map { |segment| camelize(segment) }.join("::")
     end
 
     def load_setup_hook!
@@ -111,18 +361,57 @@ module Torikago
 
     def resolve_public_api_class(class_name)
       boot_runtime!
+      resolve_runtime_class(class_name)
+    end
+
+    def resolve_runtime_class(class_name)
       root = isolated_box_enabled? ? box : Object
       # const_get is evaluated inside the Box object when isolation is enabled,
-      # which keeps public API constants out of the host Object namespace.
+      # which keeps module-owned constants out of the host Object namespace.
       class_name.split("::").reduce(root) { |context, segment| context.const_get(segment) }
     end
 
     def runtime_files
-      @runtime_files ||= [
+      @runtime_files ||= if rails_engine?
+                           rails_runtime_files
+                         else
+                           [
+                             *library_files,
+                             *gateway_model_files,
+                             *Dir[public_api_root.join("**/*.rb").to_s].sort
+                           ]
+                         end
+    end
+
+    def rails_runtime_files
+      [
+        *rails_engine_entrypoint_files,
         *library_files,
-        *gateway_model_files,
+        *Dir[module_root.join("app/models/**/*.rb").to_s].sort,
+        *Dir[module_root.join("app/helpers/**/*.rb").to_s].sort,
+        *rails_controller_files,
+        *Dir[public_api_root.join("**/*.rb").to_s].sort,
+        *Dir[module_root.join("config/routes.rb").to_s].sort
+      ].uniq
+    end
+
+    def controller_runtime_files
+      [
+        *library_files,
+        *Dir[module_root.join("app/models/**/*.rb").to_s].sort,
+        *Dir[module_root.join("app/helpers/**/*.rb").to_s].sort,
+        *rails_controller_files,
         *Dir[public_api_root.join("**/*.rb").to_s].sort
-      ]
+      ].uniq
+    end
+
+    def rails_controller_files
+      files = Dir[module_root.join("app/controllers/**/*.rb").to_s].sort
+      application_controllers, other_controllers = files.partition do |path|
+        File.basename(path) == "application_controller.rb"
+      end
+
+      application_controllers + other_controllers
     end
 
     def public_api_root
@@ -199,16 +488,19 @@ module Torikago
       if box.respond_to?(:require)
         box.require("torikago/current_execution")
       end
-      install_gateway_bridge!
+      install_torikago_runtime_bridges!
       install_root_constant_fallback!
       @box_prepared = true
     end
 
-    def install_gateway_bridge!
+    def install_torikago_runtime_bridges!
       box_torikago = box.const_get(:Torikago)
-      return if box_torikago.const_defined?(:Gateway, false)
 
-      box_torikago.const_set(:Gateway, Torikago::Gateway)
+      TORIKAGO_RUNTIME_CONSTANTS.each do |constant_name|
+        next if box_torikago.const_defined?(constant_name, false)
+
+        box_torikago.const_set(constant_name, Torikago.const_get(constant_name, false))
+      end
     end
 
     def install_root_constant_fallback!
@@ -232,6 +524,27 @@ module Torikago
 
         Object.singleton_class.prepend(Torikago::RootConstantFallback)
       RUBY
+    end
+
+    def install_host_runtime_bridges!
+      FRAMEWORK_CONSTANTS.each { |constant_name| install_host_constant_bridge!(constant_name) }
+      install_rails_runtime_support! if rails_engine?
+    end
+
+    def install_rails_runtime_support!
+      install_host_constant_bridge!(:ApplicationController)
+      install_host_constant_bridge!(:ApplicationRecord)
+      return unless Object.const_defined?(:ActiveSupport, false)
+      return unless box.respond_to?(:require)
+
+      box.require("active_support/core_ext/object/blank")
+    end
+
+    def install_host_constant_bridge!(constant_name)
+      return unless Object.const_defined?(constant_name, false)
+      return if box.const_defined?(constant_name, false)
+
+      box.const_set(constant_name, Object.const_get(constant_name, false))
     end
 
     def gateway_model_files
@@ -261,11 +574,17 @@ module Torikago
     def library_files
       all_files = Dir[module_root.join("lib/**/*.rb").to_s].sort
       monkey_patch_files = Dir[module_root.join("lib/monkey_patches/**/*.rb").to_s]
-      rails_engine_entrypoint_files = rails_engine? ? [module_root.join("lib/#{name}.rb").to_s] : Array.new
 
       # Monkey patches are only loaded through the explicit setup hook so a
       # module has to opt in to global-ish runtime changes.
       all_files - monkey_patch_files - rails_engine_entrypoint_files
+    end
+
+    def rails_engine_entrypoint_files
+      return Array.new unless rails_engine?
+
+      path = module_root.join("lib/#{name}.rb")
+      path.exist? ? [path.to_s] : Array.new
     end
 
     def rails_engine?

@@ -5,6 +5,7 @@ module Torikago
   def self.configure: () { (Configuration) -> untyped } -> Configuration
   def self.gateway: () -> Gateway
   def self.registry: () -> Registry
+  def self.action: (Symbol | String module_name, String controller_name, Symbol | String action_name) -> ControllerEndpoint
   def self.version: () -> String
 
   def version: () -> String
@@ -103,6 +104,33 @@ module Torikago
     def build_container: (Configuration::Definition definition) -> EngineContainer
   end
 
+  class RackEndpoint
+    def initialize: (Symbol | String module_name, ?registry: Registry?) -> void
+    def call: (Hash[String, untyped] env) -> untyped
+
+    private
+
+    attr_reader module_name: Symbol
+    def registry: () -> Registry
+  end
+
+  class ControllerEndpoint
+    def initialize: (
+      Symbol | String module_name,
+      String controller_name,
+      Symbol | String action_name,
+      ?registry: Registry?
+    ) -> void
+    def call: (Hash[String, untyped] env) -> untyped
+
+    private
+
+    attr_reader action_name: Symbol
+    attr_reader controller_name: String
+    attr_reader module_name: Symbol
+    def registry: () -> Registry
+  end
+
   class RootConstantResolver
     UNRESOLVED: Object
 
@@ -123,6 +151,8 @@ module Torikago
 
   class EngineContainer
     BUNDLER_SETUP_ENV_MUTEX: Mutex
+    TORIKAGO_RUNTIME_CONSTANTS: Array[Symbol]
+    FRAMEWORK_CONSTANTS: Array[Symbol]
 
     def initialize: (
       name: Symbol | String,
@@ -146,6 +176,12 @@ module Torikago
       method_args: Array[untyped],
       method_kwargs: Hash[Symbol, untyped]
     ) -> untyped
+    def call: (Hash[String, untyped] env) -> untyped
+    def dispatch_controller: (
+      Hash[String, untyped] env,
+      controller_name: String,
+      action_name: Symbol | String
+    ) -> untyped
 
     private
 
@@ -161,12 +197,31 @@ module Torikago
     attr_reader setup: String?
 
     def boot_runtime!: () -> untyped
+    def boot_controller_runtime!: () -> untyped
+    def load_runtime_files_into_box!: (Array[String] files) -> untyped
+    def dispatch_controller_action: (
+      Hash[String, untyped] env,
+      untyped controller,
+      Symbol | String action_name,
+      Hash[Symbol | String, untyped] path_parameters
+    ) -> untyped
+    def attach_rails_helpers!: () -> untyped
+    def prepare_rails_application_controller_in_box!: () -> untyped
+    def normalize_rails_constant_name!: (String path) -> untyped
+    def rails_constant_name_for: (String path) -> String?
+    def recognize_route: (Hash[String, untyped] env) -> untyped
+    def recognize_rails_route: (untyped routes, Hash[String, untyped] env) -> untyped
+    def camelize_controller: (String controller_path) -> String
     def load_setup_hook!: () -> untyped
     def apply_gemfile_overrides!: () -> untyped
     def prepend_gemfile_require_paths_to_box!: () -> untyped
     def gemfile_dependencies: () -> Array[Hash[Symbol | String, untyped]]
     def resolve_public_api_class: (String class_name) -> untyped
+    def resolve_runtime_class: (String class_name) -> untyped
     def runtime_files: () -> Array[String]
+    def rails_runtime_files: () -> Array[String]
+    def controller_runtime_files: () -> Array[String]
+    def rails_controller_files: () -> Array[String]
     def public_api_root: () -> Pathname
     def gemfile_path: () -> Pathname?
     def setup_path: () -> Pathname?
@@ -176,12 +231,16 @@ module Torikago
     def box: () -> untyped
     def with_box_runtime_errors: [A] () { () -> A } -> A
     def prepare_box!: () -> untyped
-    def install_gateway_bridge!: () -> untyped
+    def install_torikago_runtime_bridges!: () -> untyped
     def install_root_constant_fallback!: () -> untyped
+    def install_host_runtime_bridges!: () -> untyped
+    def install_rails_runtime_support!: () -> untyped
+    def install_host_constant_bridge!: (Symbol constant_name) -> untyped
     def gateway_model_files: () -> Array[String]
     def rails_model_file?: (String path) -> bool
     def load_setup_hook_into_box!: () -> untyped
     def library_files: () -> Array[String]
+    def rails_engine_entrypoint_files: () -> Array[String]
     def rails_engine?: () -> bool
     def ruby_box_runtime_available?: () -> bool
     def camelize: (String segment) -> String

@@ -12,28 +12,21 @@ Rails.application.routes.draw do
   root to: "catalog#showcase"
 
   get "gem-versions" => "gem_versions#show"
-  get "jwt-checks" => "foo/jwt_checks#show"
+  get "jwt-checks" => Torikago.action(:foo, "Foo::JwtChecksController", :show)
 
-  resources :addresses, only: [:index], controller: "foo/addresses" do
-    collection do
-      post :search
-    end
-  end
+  get "addresses" => Torikago.action(:foo, "Foo::AddressesController", :index),
+      as: :addresses
+  post "addresses/search" => Torikago.action(:foo, "Foo::AddressesController", :search),
+       as: :search_addresses
 
-  scope path: "foo" do
-    get "showcase" => "foo/showcase#show"
-    get "products" => "foo/products#index"
-    get "baz-check" => "foo/baz_checks#show"
-  end
+  get "foo/showcase" => Torikago.action(:foo, "Foo::ShowcaseController", :show)
+  get "foo/products" => Torikago.action(:foo, "Foo::ProductsController", :index)
+  get "foo/baz-check" => Torikago.action(:foo, "Foo::BazChecksController", :show)
 
-  scope path: "bar" do
-    get "showcase" => "bar/showcase#show"
-    get "foo-products" => "bar/foo_products#index"
-    get "baz-check" => "bar/baz_checks#show"
-  end
+  get "bar/showcase" => Torikago.action(:bar, "Bar::ShowcaseController", :show)
+  get "bar/foo-products" => Torikago.action(:bar, "Bar::FooProductsController", :index)
+  get "bar/baz-check" => Torikago.action(:bar, "Bar::BazChecksController", :show)
 
-  scope path: "baz" do
-    get "showcase" => "baz/showcase#show"
-    get "foo-products" => "baz/foo_products#index"
-  end
+  get "baz/showcase" => Torikago.action(:baz, "Baz::ShowcaseController", :show)
+  get "baz/foo-products" => Torikago.action(:baz, "Baz::FooProductsController", :index)
 end
