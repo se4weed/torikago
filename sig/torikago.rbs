@@ -407,7 +407,7 @@ module Rails
 end
 
 module Bundler
-  def self.ui: () -> untyped
+  def self.unbundled_env: () -> Hash[String, String]
 
   class BundlerError < StandardError
   end
@@ -435,4 +435,9 @@ class Gem::Specification
   def version: () -> Gem::Version
   def require_paths: () -> Array[String]
   def full_require_paths: () -> Array[String]
+end
+
+module Open3
+  def self.capture3: (Hash[String, String] environment, *String command, chdir: String, unsetenv_others: bool) -> [String, String, Process::Status]
+                  | ...
 end

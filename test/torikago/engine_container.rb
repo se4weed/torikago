@@ -897,6 +897,35 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_module_resolution_is_independent_of_host_bundle_setup
+    skip("requires rake 13.3.1 and 13.4.2") unless installed_gem?("rake", "= 13.3.1") && installed_gem?("rake", "= 13.4.2")
+
+    Dir.mktmpdir("torikago-host-bundle") do |root|
+      host_gemfile = File.join(root, "Gemfile")
+      module_root = File.join(root, "module")
+      FileUtils.mkdir_p(module_root)
+      File.write(host_gemfile, "source 'https://rubygems.org'\ngem 'rake', '= 13.4.2'\n")
+      File.write(File.join(module_root, "Gemfile"), "source 'https://rubygems.org'\ngem 'rake', '= 13.3.1'\n")
+      script = <<~RUBY
+        require "bundler/setup"
+        require "torikago"
+        host_root = Bundler.root
+        container = Torikago::EngineContainer.new(name: :foo, module_root: ARGV.fetch(0), gemfile: "Gemfile")
+        dependency = container.send(:gemfile_dependencies).find { |item| item[:name] == "rake" }
+        raise dependency.inspect unless dependency.fetch(:requirement) == "= 13.3.1"
+        raise "host root changed" unless Bundler.root == host_root
+        raise "host activation changed" unless Gem.loaded_specs.fetch("rake").version.to_s == "13.4.2"
+        puts "ok"
+      RUBY
+      output, errors, status = Open3.capture3(
+        { "BUNDLE_GEMFILE" => host_gemfile, "RUBY_BOX" => "0", "RUBYOPT" => nil },
+        RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-e", script, module_root
+      )
+      assert status.success?, errors
+      assert_equal "ok\n", output
+    end
+  end
+
   def test_gemfile_resolves_mixed_requirements_and_transitive_dependencies
     Dir.mktmpdir("torikago-dependencies") do |root|
       %w[direct transitive fixed ranged].each do |gem_name|
