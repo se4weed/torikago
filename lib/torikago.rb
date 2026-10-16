@@ -14,9 +14,11 @@ require_relative "torikago/registry"
 require_relative "torikago/version"
 
 module Torikago
+  RUNTIME_STATE_MONITOR = Monitor.new
+
   class << self
     def configuration
-      @configuration ||= Configuration.new
+      RUNTIME_STATE_MONITOR.synchronize { @configuration ||= Configuration.new }
     end
 
     def configure
@@ -28,11 +30,13 @@ module Torikago
     end
 
     def gateway
-      @gateway ||= Gateway.new(registry: registry, configuration: configuration)
+      RUNTIME_STATE_MONITOR.synchronize do
+        @gateway ||= Gateway.new(registry: registry, configuration: configuration)
+      end
     end
 
     def registry
-      @registry ||= Registry.new(configuration: configuration)
+      RUNTIME_STATE_MONITOR.synchronize { @registry ||= Registry.new(configuration: configuration) }
     end
 
     def action(module_name, controller_name, action_name)
@@ -66,8 +70,10 @@ module Torikago
     end
 
     def reset_runtime_state!
-      @gateway = nil
-      @registry = nil
+      RUNTIME_STATE_MONITOR.synchronize do
+        @gateway = nil
+        @registry = nil
+      end
     end
   end
 

@@ -5,17 +5,20 @@ module Torikago
     def initialize(configuration:, &container_factory)
       @configuration = configuration
       @containers = Hash.new
+      @mutex = Mutex.new
       @container_factory = container_factory || method(:build_container)
     end
 
     def resolve(name)
       normalized_name = name.to_sym
 
-      @containers.fetch(normalized_name) do
-        definition = @configuration.fetch(name)
-        container = @container_factory.call(definition)
+      @mutex.synchronize do
+        @containers.fetch(normalized_name) do
+          definition = @configuration.fetch(name)
+          container = @container_factory.call(definition)
 
-        @containers[definition.name] = container
+          @containers[definition.name] = container
+        end
       end
     end
 

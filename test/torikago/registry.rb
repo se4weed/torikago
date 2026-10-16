@@ -50,6 +50,40 @@ class TorikagoRegistryTest < Minitest::Test
     assert_equal 1, build_count
   end
 
+  def test_concurrent_resolve_builds_only_one_container
+    entered = Queue.new
+    release = Queue.new
+    builds = Queue.new
+    registry = Torikago::Registry.new(configuration: @configuration) do |_definition|
+      builds << true
+      entered << true
+      release.pop
+      Object.new
+    end
+    first = Thread.new { registry.resolve(:foo) }
+    entered.pop
+    second = Thread.new { registry.resolve("foo") }
+    sleep 0.05
+    assert_equal 1, builds.size
+    2.times { release << true }
+    assert_same first.value, second.value
+    assert_equal 1, builds.size
+  ensure
+    [first, second].compact.each { |thread| thread.kill if thread.alive? }
+  end
+
+  def test_failed_container_construction_can_be_retried
+    attempts = 0
+    registry = Torikago::Registry.new(configuration: @configuration) do |_definition|
+      attempts += 1
+      raise "failed" if attempts == 1
+      Object.new
+    end
+    assert_raises(RuntimeError) { registry.resolve(:foo) }
+    assert_same registry.resolve(:foo), registry.resolve(:foo)
+    assert_equal 2, attempts
+  end
+
   def test_resolve_fails_clearly_for_an_unknown_module
     registry = Torikago::Registry.new(configuration: @configuration) do |_definition|
       Object.new

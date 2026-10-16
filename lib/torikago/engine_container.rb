@@ -1,4 +1,5 @@
 require "pathname"
+require "monitor"
 require_relative "root_constant_resolver"
 
 module Torikago
@@ -6,7 +7,7 @@ module Torikago
   # loads the module into an isolated Box; otherwise it falls back to the host
   # process for development and tests.
   class EngineContainer
-    BUNDLER_SETUP_ENV_MUTEX = Mutex.new
+    BUNDLER_SETUP_ENV_MUTEX = Monitor.new
     TORIKAGO_RUNTIME_CONSTANTS = %i[
       Error
       DependencyError
@@ -89,7 +90,13 @@ module Torikago
 
     attr_reader :box_factory, :entrypoint, :gem_activator, :gemfile, :gemfile_dependency_loader, :module_root, :name, :registered_roots, :root_constant_resolver, :setup
 
+    # Share the environment lock across containers: boot can invoke another
+    # module, so per-container locks would introduce opposing lock orders.
     def boot_runtime!
+      BUNDLER_SETUP_ENV_MUTEX.synchronize { boot_runtime_unsynchronized! }
+    end
+
+    def boot_runtime_unsynchronized!
       return if @booted
 
       files = runtime_files
@@ -131,6 +138,10 @@ module Torikago
     end
 
     def boot_controller_runtime!
+      BUNDLER_SETUP_ENV_MUTEX.synchronize { boot_controller_runtime_unsynchronized! }
+    end
+
+    def boot_controller_runtime_unsynchronized!
       boot_runtime!
       return if rails_engine?
       return if @controller_runtime_booted
@@ -725,7 +736,7 @@ module Torikago
     end
 
     def without_bundler_setup_env
-      if BUNDLER_SETUP_ENV_MUTEX.owned?
+      if BUNDLER_SETUP_ENV_MUTEX.mon_owned?
         without_bundler_setup_env_unsynchronized { yield }
       else
         BUNDLER_SETUP_ENV_MUTEX.synchronize do

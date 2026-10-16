@@ -1,4 +1,5 @@
 module Torikago
+  RUNTIME_STATE_MONITOR: Monitor
   VERSION: String
 
   def self.configuration: () -> Configuration
@@ -150,7 +151,7 @@ module Torikago
   end
 
   class EngineContainer
-    BUNDLER_SETUP_ENV_MUTEX: Mutex
+    BUNDLER_SETUP_ENV_MUTEX: Monitor
     TORIKAGO_RUNTIME_CONSTANTS: Array[Symbol]
     FRAMEWORK_CONSTANTS: Array[Symbol]
 
@@ -196,6 +197,8 @@ module Torikago
     attr_reader root_constant_resolver: RootConstantResolver?
     attr_reader setup: String?
 
+    def boot_runtime_unsynchronized!: () -> untyped
+    def boot_controller_runtime_unsynchronized!: () -> untyped
     def boot_runtime!: () -> untyped
     def boot_controller_runtime!: () -> untyped
     def load_runtime_files_into_box!: (Array[String] files) -> untyped
