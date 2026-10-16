@@ -33,7 +33,7 @@ The main `config.register` options are:
 - `rails_engine`
   - enables the module-owned Rails::Engine route set and loads its Rails runtime into the same Box
   - mount `Torikago::RackEndpoint.new(:foo)` in the host router instead of mounting `Foo::Engine`
-  - not required when host routes dispatch controllers with `Torikago.action(...)`
+  - recommended for module HTTP routes; Gateway-only modules do not require it
 - `setup`
   - a setup hook loaded before Box boot completes
   - useful for monkey patches or Box-specific initialization
@@ -120,32 +120,48 @@ request or Gateway invocation and reused afterward.
 Torikago uses Rack-compatible route endpoints for this bridge; it does not add
 process-wide Rack middleware.
 
-Rails::Engine is optional for controller isolation. A host-owned route can
-dispatch to a controller constant that Torikago resolves only inside the module
-Box:
+### Engine-less HTTP exposure is deprecated
+
+`Torikago.action(...)` and `Torikago::ControllerEndpoint` are deprecated.
+Existing routes continue to work, but emit a warning when each endpoint is
+constructed (normally when routes are drawn), not on each request. No removal
+version has been scheduled.
+
+Move HTTP routes into a module-owned `Rails::Engine`, register the module with
+`rails_engine: true`, and mount `Torikago::RackEndpoint` from the host. For example,
+replace `get "/qux/showcase" => Torikago.action(:qux, "Qux::ShowcaseController", :show)` with:
 
 ```ruby
+# modules/qux/lib/qux.rb
+module Qux
+  class Engine < ::Rails::Engine
+    config.root = File.expand_path("..", __dir__)
+  end
+end
+
+# modules/qux/config/routes.rb
+Qux::Engine.routes.draw do
+  get "showcase" => "qux/showcase#show"
+end
+
 # config/initializers/torikago.rb
 Torikago.configure do |config|
-  config.register(:qux, root: Rails.root.join("modules/qux"))
+  config.register(:qux, root: Rails.root.join("modules/qux"), rails_engine: true)
 end
 
 # config/routes.rb (host application)
-get "/qux/showcase" => Torikago.action(
-  :qux,
-  "Qux::ShowcaseController",
-  :show
-)
+mount Torikago::RackEndpoint.new(:qux) => "/qux"
 ```
 
-The module name and root registered in `config/initializers/torikago.rb` identify
-the owner, and no additional `config.register` option is required for this
-host-route mode. The current Rails integration still requires real controller
-classes to live under the namespace derived from the registered module name.
-Support for non-namespaced Rails controllers is tracked in
-[issue #15](https://github.com/se4weed/torikago/issues/15). Controllers, models,
-helpers, views, and Package APIs stay under the registered module root; they do
-not need to be added to the host application's autoload paths.
+Keep `Qux::ShowcaseController` under the module root. Module routes, controllers,
+models, and views do not need to be added to the host's autoload paths.
+The current Engine integration uses the Box-local route set and controller
+directly; it does not execute the Engine's entire Rack middleware stack.
+
+**Modules exposing only Query / Command APIs through Gateway remain supported
+without Rails::Engine.** They can continue to omit `rails_engine: true`.
+`example/rails-modular-monolith/` and the Engine example's `qux` HTTP route are
+retained as compatibility coverage for the deprecated APIs.
 
 ## Usage
 
