@@ -897,6 +897,81 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_gemfile_resolves_mixed_requirements_and_transitive_dependencies
+    Dir.mktmpdir("torikago-dependencies") do |root|
+      %w[direct transitive fixed ranged].each do |gem_name|
+        gem_root = File.join(root, gem_name == "transitive" ? "direct/transitive" : gem_name)
+        FileUtils.mkdir_p(File.join(gem_root, "lib"))
+        dependency = gem_name == "direct" ? 'spec.add_dependency "transitive", "~> 1.0"' : ""
+        File.write(File.join(gem_root, "#{gem_name}.gemspec"), <<~GEMSPEC)
+          Gem::Specification.new do |spec|
+            spec.name = "#{gem_name}"
+            spec.version = "1.0.0"
+            spec.summary = "fixture"
+            spec.authors = ["torikago"]
+            #{dependency}
+          end
+        GEMSPEC
+      end
+      File.write(File.join(root, "Gemfile"), <<~GEMFILE)
+        source "https://rubygems.org"
+        gem "direct", path: "direct"
+        gem "fixed", "= 1.0.0", path: "fixed"
+        gem "ranged", "~> 1.0", path: "ranged"
+      GEMFILE
+      File.write(File.join(root, "Gemfile.lock"), <<~LOCK)
+        PATH
+          remote: direct
+          specs:
+            direct (1.0.0)
+              transitive (~> 1.0)
+            transitive (1.0.0)
+
+        PATH
+          remote: fixed
+          specs:
+            fixed (1.0.0)
+
+        PATH
+          remote: ranged
+          specs:
+            ranged (1.0.0)
+
+        GEM
+          remote: https://rubygems.org/
+          specs:
+
+        PLATFORMS
+          ruby
+
+        DEPENDENCIES
+          direct!
+          fixed (= 1.0.0)!
+          ranged (~> 1.0)!
+      LOCK
+      container = Torikago::EngineContainer.new(name: :foo, module_root: root, gemfile: "Gemfile")
+      dependencies = container.send(:gemfile_dependencies).reject { |item| item.fetch(:name) == "bundler" }
+      assert_equal %w[direct fixed ranged transitive], dependencies.map { |item| item.fetch(:name) }.sort
+      dependencies.each do |item|
+        assert_equal "= 1.0.0", item.fetch(:requirement)
+        assert_includes item.fetch(:require_paths), File.join(root, item.fetch(:name) == "transitive" ? "direct/transitive" : item.fetch(:name), "lib")
+      end
+    end
+  end
+
+  def test_mixed_gemfile_does_not_ignore_a_missing_dependency
+    Dir.mktmpdir("torikago-dependencies") do |root|
+      File.write(File.join(root, "Gemfile"), <<~GEMFILE)
+        source "https://rubygems.org"
+        gem "rake", "= 13.4.2"
+        gem "torikago_nonexistent_dependency", "~> 1.0"
+      GEMFILE
+      container = Torikago::EngineContainer.new(name: :foo, module_root: root, gemfile: "Gemfile")
+      error = assert_raises(Torikago::GemfileOverrideError) { container.send(:gemfile_dependencies) }
+      assert_match(/torikago_nonexistent_dependency/, error.message)
+    end
+  end
+
   def test_invoke_reports_missing_installed_gemfile_dependencies_clearly
     with_module_root do |module_root|
       File.write(
