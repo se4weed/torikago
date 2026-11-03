@@ -33,7 +33,7 @@ end
 - `rails_engine`
   - moduleが所有するRails::Engineのroute setを有効にし、Rails runtimeを同じBoxへ読み込む
   - host routerでは`Foo::Engine`ではなく`Torikago::RackEndpoint.new(:foo)`をmountする
-  - host routeから`Torikago.action(...)`でControllerを呼ぶ場合は不要
+  - moduleのHTTP routeにはこの構成を推奨。Gateway専用moduleには不要
 - `setup`
   - Box boot前に読み込むsetup hook
   - monkey patchやbox固有の初期化処理に使う
@@ -118,30 +118,47 @@ endpointは現在のlazy bootを維持します。最初のHTTP requestまたは
 この橋渡しにはRack互換のroute endpointを使います。process全体へRack middlewareを
 追加する仕組みではありません。
 
-Controllerの隔離にRails::Engineは必須ではありません。host側のrouteから、
-torikagoがmodule Box内だけで解決するControllerへdispatchできます。
+### EngineなしのHTTP公開は非推奨
+
+`Torikago.action(...)`と`Torikago::ControllerEndpoint`は非推奨です。
+既存のrouteは引き続き動作しますが、endpoint生成時（通常はroute定義時）に警告します。
+requestごとの警告は出しません。削除バージョンは未定です。
+
+HTTP routeはmodule所有の`Rails::Engine`へ移し、`rails_engine: true`で登録して、
+hostから`Torikago::RackEndpoint`をmountしてください。たとえば、既存の
+`get "/qux/showcase" => Torikago.action(:qux, "Qux::ShowcaseController", :show)`は次のように移行します。
 
 ```ruby
-# config/initializers/torikago.rb
-Torikago.configure do |config|
-  config.register(:qux, root: Rails.root.join("modules/qux"))
+# modules/qux/lib/qux.rb
+module Qux
+  class Engine < ::Rails::Engine
+    config.root = File.expand_path("..", __dir__)
+  end
 end
 
-# config/routes.rb（host application）
-get "/qux/showcase" => Torikago.action(
-  :qux,
-  "Qux::ShowcaseController",
-  :show
-)
+# modules/qux/config/routes.rb
+Qux::Engine.routes.draw do
+  get "showcase" => "qux/showcase#show"
+end
+
+# config/initializers/torikago.rb
+Torikago.configure do |config|
+  config.register(:qux, root: Rails.root.join("modules/qux"), rails_engine: true)
+end
+
+# config/routes.rb (host application)
+mount Torikago::RackEndpoint.new(:qux) => "/qux"
 ```
 
-Controllerの所有moduleは、`config/initializers/torikago.rb`へ登録したmodule名と
-rootで決まり、このhost route方式のために追加の`config.register` optionは必要ありません。
-ただし、現在のRails integrationでは、実際のController classを登録module名から導かれる
-namespace内に置く必要があります。namespaceを持たないRails Controllerへの対応は
-[issue #15](https://github.com/se4weed/torikago/issues/15)で追跡しています。
-Controller、Model、helper、view、Package APIをhost applicationのautoload pathへ
-追加する必要はありません。
+Controllerは引き続き`Qux::ShowcaseController`としてmodule内に配置します。
+moduleのroutes、Controller、Model、viewをhostのautoload pathへ追加する必要はありません。
+現在のEngine連携はBox内のroute setとControllerを直接利用し、EngineのRack middleware
+stack全体を実行するものではありません。
+
+**Gateway経由でQuery / Commandだけを公開するmoduleは非推奨の対象外です。**
+`rails_engine: true`を指定せずに引き続き利用できます。
+`example/rails-modular-monolith/`とEngine example内の`qux`のHTTP routeは、
+非推奨APIの互換性確認用として残しています。
 
 ## 使い方
 

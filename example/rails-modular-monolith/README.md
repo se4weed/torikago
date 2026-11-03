@@ -1,5 +1,12 @@
 # rails-modular-monolith
 
+> Engine-less HTTP exposure through `Torikago.action` / `ControllerEndpoint` is
+> deprecated. This example retains it for compatibility coverage and emits
+> warnings when routes are drawn. For new HTTP routes, use a module-owned
+> Rails::Engine and mount `Torikago::RackEndpoint`. Gateway-only modules remain
+> supported without an Engine. See the [migration guide](../../README.md#engine-less-http-exposure-is-deprecated).
+
+
 This is the example Rails app for `torikago`.
 
 It demonstrates a Rails-first modular monolith where:
