@@ -35,6 +35,71 @@ class TorikagoEngineContainerTest < Minitest::Test
     end
   end
 
+  def test_concurrent_boot_loads_runtime_and_controller_files_once
+    [:boot_runtime!, :boot_controller_runtime!].each do |boot_method|
+      with_module_root do |root|
+        entered = Queue.new
+        release = Queue.new
+        loads = Queue.new
+        container = Torikago::EngineContainer.new(name: :foo, module_root: root)
+        container.define_singleton_method(:isolated_box_enabled?) { false }
+        container.define_singleton_method(:runtime_files) { [] }
+        container.define_singleton_method(:controller_runtime_files) { [] }
+        container.define_singleton_method(:attach_rails_helpers!) do
+          loads << true
+          if loads.size == 1
+            entered << true
+            release.pop
+          end
+        end
+        first = Thread.new { container.send(boot_method) }
+        entered.pop
+        second = Thread.new { container.send(boot_method) }
+        sleep 0.05
+        assert_equal 1, loads.size
+        2.times { release << true }
+        first.value
+        second.value
+        assert_equal(boot_method == :boot_runtime! ? 1 : 2, loads.size)
+      ensure
+        [first, second].compact.each { |thread| thread.kill if thread.alive? }
+      end
+    end
+  end
+
+  def test_failed_boot_releases_the_lock_and_can_be_retried
+    with_module_root do |root|
+      attempts = 0
+      container = Torikago::EngineContainer.new(name: :foo, module_root: root)
+      container.define_singleton_method(:isolated_box_enabled?) { false }
+      container.define_singleton_method(:load_setup_hook!) do
+        attempts += 1
+        raise "setup failed" if attempts == 1
+      end
+      assert_raises(RuntimeError) { container.send(:boot_runtime!) }
+      retry_thread = Thread.new { container.send(:boot_runtime!) }
+      assert retry_thread.join(5), "boot lock was not released after failure"
+      retry_thread.value
+      container.send(:boot_runtime!)
+      assert_equal 2, attempts
+    ensure
+      retry_thread&.kill if retry_thread&.alive?
+    end
+  end
+
+  def test_boot_can_enter_another_container_while_holding_the_environment_lock
+    first = Torikago::EngineContainer.new(name: :foo, module_root: Dir.pwd)
+    second = Torikago::EngineContainer.new(name: :bar, module_root: Dir.pwd)
+    boots = []
+    second.define_singleton_method(:boot_runtime_unsynchronized!) { boots << :bar }
+    first.define_singleton_method(:boot_runtime_unsynchronized!) do
+      without_bundler_setup_env { second.send(:boot_runtime!) }
+      boots << :foo
+    end
+    first.send(:boot_runtime!)
+    assert_equal [:bar, :foo], boots
+  end
+
   def test_invoke_sets_the_current_box_during_execution
     with_module_root do |module_root|
       container = Torikago::EngineContainer.new(name: :foo, module_root: module_root)
