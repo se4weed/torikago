@@ -245,11 +245,7 @@ module Torikago
     def ruby_box_runtime_available?: () -> bool
     def camelize: (String segment) -> String
     def load_gemfile_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
-    def load_path_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
     def load_bundler_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
-    def load_installed_gem_dependencies: (Pathname path) -> Array[Hash[Symbol, untyped]]
-    def installed_specs_for: (String gem_name, String requirement) -> Array[Gem::Specification]
-    def exact_version_gemfile_dependencies: (Pathname path) -> Array[Hash[Symbol, String]]
     def activate_gem_dependency: (Hash[Symbol, untyped] dependency) -> untyped
     def without_bundler_setup_env: [A] () { () -> A } -> A
     def without_bundler_setup_env_unsynchronized: [A] () { () -> A } -> A
@@ -411,6 +407,8 @@ module Rails
 end
 
 module Bundler
+  def self.unbundled_env: () -> Hash[String, String]
+
   class BundlerError < StandardError
   end
 
@@ -437,4 +435,9 @@ class Gem::Specification
   def version: () -> Gem::Version
   def require_paths: () -> Array[String]
   def full_require_paths: () -> Array[String]
+end
+
+module Open3
+  def self.capture3: (Hash[String, String] environment, *String command, chdir: String, unsetenv_others: bool) -> [String, String, Process::Status]
+                  | ...
 end

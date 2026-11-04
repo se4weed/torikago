@@ -1,4 +1,7 @@
 require "pathname"
+require "open3"
+require "rbconfig"
+require "json"
 require_relative "root_constant_resolver"
 
 module Torikago
@@ -604,120 +607,39 @@ module Torikago
         raise GemfileOverrideError, "gemfile not found for #{name}: #{path}"
       end
 
-      # Prefer cheap local parsing for path and exact-version dependencies, then
-      # fall back to Bundler for more complex Gemfiles.
-      path_gem_dependencies = load_path_gem_dependencies(path)
-      return path_gem_dependencies unless path_gem_dependencies.empty?
-
-      installed_gem_dependencies = load_installed_gem_dependencies(path)
-      return installed_gem_dependencies unless installed_gem_dependencies.empty?
-
       load_bundler_gem_dependencies(path)
-    end
-
-    def load_path_gem_dependencies(path)
-      path.dirname.then do |gemfile_root|
-        path.read.scan(/^\s*gem\s+["']([^"']+)["']\s*,\s*path:\s*["']([^"']+)["']/).filter_map do |gem_name, relative_path|
-          next unless relative_path
-
-          relative_path = relative_path.to_s
-          gem_root = gemfile_root.join(relative_path)
-          gemspec_path = gem_root.join("#{gem_name}.gemspec")
-          gemspec_path = Dir[gem_root.join("*.gemspec").to_s].sort.first unless gemspec_path.exist?
-          next unless gemspec_path
-
-          spec = Gem::Specification.load(gemspec_path.to_s)
-          next unless spec
-
-          {
-            name: spec.name,
-            requirement: "= #{spec.version}",
-            require_paths: spec.require_paths.map { |require_path| gem_root.join(require_path).to_s }
-          }
-        end
-      end
     end
 
     def load_bundler_gem_dependencies(path)
       require "bundler"
 
-      lockfile = Pathname("#{path}.lock")
-      definition = Bundler::Definition.build(path.to_s, lockfile.exist? ? lockfile.to_s : nil, nil)
-
-      specs_by_name = definition.specs.each_with_object(Hash.new) do |spec, specs|
-        specs[spec.name] ||= spec
+      # Bundler caches its root, settings and installed specs process-wide, and
+      # bundle exec restricts RubyGems to the host bundle. Resolve in a clean
+      # child process so module versions and relative paths remain independent.
+      script = <<~RUBY
+        $stdout = $stderr
+        path = ARGV.fetch(0)
+        lockfile = "\#{path}.lock"
+        definition = Bundler::Definition.build(path, File.exist?(lockfile) ? lockfile : nil, nil)
+        dependencies = Bundler.ui.silence do
+          definition.specs.map do |spec|
+            { name: spec.name, requirement: "= \#{spec.version}", require_paths: spec.full_require_paths }
+          end
+        end
+        STDOUT.write(JSON.generate(dependencies))
+      RUBY
+      environment = Bundler.unbundled_env.merge("BUNDLE_GEMFILE" => path.expand_path.to_s, "RUBY_BOX" => "0")
+      output, errors, status = Open3.capture3(
+        environment, RbConfig.ruby, "-rbundler", "-rjson", "-e", script, path.expand_path.to_s,
+        chdir: path.expand_path.dirname.to_s, unsetenv_others: true
+      )
+      unless status.success?
+        raise GemfileOverrideError, "failed to load gemfile for #{name}: #{errors.strip}"
       end
 
-      definition.dependencies.filter_map do |dependency|
-        spec = specs_by_name.fetch(dependency.name, nil)
-        next unless spec
-
-        requirement = dependency.requirement.to_s
-        {
-          name: dependency.name,
-          requirement: requirement,
-          require_paths: spec.full_require_paths
-        }
-      end
+      JSON.parse(output, symbolize_names: true)
     rescue LoadError => e
       raise GemfileOverrideError, "failed to load bundler for #{name}: #{e.message}"
-    rescue StandardError => e
-      raise unless defined?(Bundler::BundlerError) && e.is_a?(Bundler::BundlerError)
-
-      raise GemfileOverrideError, "failed to load gemfile for #{name}: #{e.message}"
-    end
-
-    def load_installed_gem_dependencies(path)
-      dependencies = exact_version_gemfile_dependencies(path)
-      return Array.new if dependencies.empty?
-
-      dependencies.filter_map do |dependency|
-        specs = installed_specs_for(dependency.fetch(:name), dependency.fetch(:requirement))
-        spec = specs.max_by(&:version)
-        unless spec
-          raise GemfileOverrideError,
-                "failed to load gemfile for #{name}: Could not find gem '#{dependency.fetch(:name)} (#{dependency.fetch(:requirement)})' in locally installed gems."
-        end
-
-        {
-          name: spec.name,
-          requirement: dependency.fetch(:requirement),
-          require_paths: spec.full_require_paths
-        }
-      end
-    end
-
-    def installed_specs_for(gem_name, requirement)
-      specs = Gem::Specification.find_all_by_name(gem_name, requirement)
-      return specs unless specs.empty?
-
-      gem_requirement = Gem::Requirement.new(requirement)
-      Gem::Specification.dirs.flat_map do |specification_dir|
-        Dir[File.join(specification_dir, "#{gem_name}-*.gemspec")].filter_map do |gemspec_path|
-          spec = Gem::Specification.load(gemspec_path)
-          next unless spec
-          next unless spec.name == gem_name
-          next unless gem_requirement.satisfied_by?(spec.version)
-
-          spec
-        end
-      end
-    end
-
-    def exact_version_gemfile_dependencies(path)
-      path.read.each_line.filter_map do |line|
-        match = line.match(/^\s*gem\s+["']([^"']+)["']\s*,\s*["']=\s*([^"']+)["']/)
-        next unless match
-
-        gem_name = match[1]
-        version = match[2]
-        next unless gem_name && version
-
-        {
-          name: gem_name,
-          requirement: "= #{version}"
-        }
-      end
     end
 
     def activate_gem_dependency(dependency)
